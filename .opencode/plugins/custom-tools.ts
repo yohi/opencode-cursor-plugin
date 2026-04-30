@@ -3,6 +3,8 @@ import { z } from "zod";
 
 loadDotenv();
 
+const DEFAULT_LOCAL_MODEL = "composer-2";
+
 const argsSchema = z.object({
   prompt: z
     .string()
@@ -62,7 +64,39 @@ const CustomToolsPlugin = async ({
             throw new Error("CURSOR_API_KEY is not set in the environment");
           }
 
-          throw new Error("not implemented yet");
+          const resolvedModelId = args.model ?? DEFAULT_LOCAL_MODEL;
+          if (!args.model) {
+            log.warn("cursor_prompt: model omitted; substituting DEFAULT_LOCAL_MODEL", {
+              defaultModelId: DEFAULT_LOCAL_MODEL,
+            });
+          }
+
+          log.debug("cursor_prompt invoked", {
+            promptLength: args.prompt.length,
+            modelId: resolvedModelId,
+          });
+
+          const { Agent } = await import("@cursor/sdk");
+          const agent = await Agent.create({
+            apiKey,
+            model: { id: resolvedModelId },
+            local: { cwd: process.cwd() },
+          });
+          log.info("cursor_prompt: agent created");
+
+          const run = await agent.send(args.prompt);
+          log.info("cursor_prompt: prompt sent");
+          const result = await run.wait();
+
+          if (result.status === "finished") {
+            const responseText = result.result ?? "";
+            log.info("cursor_prompt: run finished", {
+              responseLength: responseText.length,
+            });
+            return responseText;
+          }
+
+          throw new Error(`cursor_prompt: unexpected run status ${result.status}`);
         },
       }),
     },

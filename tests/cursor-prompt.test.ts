@@ -70,4 +70,45 @@ describe("cursor_prompt", () => {
     await expect(tool.execute({ prompt: "hi" })).rejects.toThrow(/CURSOR_API_KEY/);
     expect(log.error).toHaveBeenCalledTimes(1);
   });
+
+  it("T2: substitutes DEFAULT_LOCAL_MODEL and warns when model is omitted", async () => {
+    process.env.CURSOR_API_KEY = "sk-test-12345";
+    const { Agent } = await import("@cursor/sdk");
+    const send = vi.fn().mockResolvedValue({
+      wait: vi.fn().mockResolvedValue({ id: "run_1", status: "finished", result: "ok" }),
+    });
+    const close = vi.fn().mockResolvedValue(undefined);
+    (Agent.create as ReturnType<typeof vi.fn>).mockResolvedValue({ send, close });
+
+    const { tool, log } = await loadTool();
+
+    const out = await tool.execute({ prompt: "hi" });
+
+    expect(out).toBe("ok");
+    expect(Agent.create).toHaveBeenCalledTimes(1);
+    const t2CreateArg = (Agent.create as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
+    expect(t2CreateArg?.model).toEqual({ id: "composer-2" });
+    expect(log.warn).toHaveBeenCalled();
+    expect(send).toHaveBeenCalledWith("hi");
+  });
+
+  it("T3: forwards explicit model to Agent.create as { id } and does not warn", async () => {
+    process.env.CURSOR_API_KEY = "sk-test-12345";
+    const { Agent } = await import("@cursor/sdk");
+    const send = vi.fn().mockResolvedValue({
+      wait: vi.fn().mockResolvedValue({ id: "run_2", status: "finished", result: "ok2" }),
+    });
+    const close = vi.fn().mockResolvedValue(undefined);
+    (Agent.create as ReturnType<typeof vi.fn>).mockResolvedValue({ send, close });
+
+    const { tool, log } = await loadTool();
+
+    const out = await tool.execute({ prompt: "hi", model: "composer-2" });
+
+    expect(out).toBe("ok2");
+    expect(Agent.create).toHaveBeenCalledTimes(1);
+    const t3CreateArg = (Agent.create as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
+    expect(t3CreateArg?.model).toEqual({ id: "composer-2" });
+    expect(log.warn).not.toHaveBeenCalled();
+  });
 });

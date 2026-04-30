@@ -194,4 +194,88 @@ describe("cursor_prompt", () => {
     await expect(tool.execute({ prompt: "hi" })).rejects.toThrow(/cancelled/);
     expect(log.error).toHaveBeenCalled();
   });
+
+  it("T10a: agent.close is called on success", async () => {
+    process.env.CURSOR_API_KEY = "sk-test-12345";
+    const { Agent } = await import("@cursor/sdk");
+    const send = vi.fn().mockResolvedValue({
+      wait: vi.fn().mockResolvedValue({ id: "run_ok", status: "finished", result: "ok" }),
+    });
+    const close = vi.fn().mockResolvedValue(undefined);
+    (Agent.create as ReturnType<typeof vi.fn>).mockResolvedValue({ send, close });
+
+    const { tool } = await loadTool();
+    await tool.execute({ prompt: "hi" });
+
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it("T10b: agent.close is called when send throws", async () => {
+    process.env.CURSOR_API_KEY = "sk-test-12345";
+    const { Agent, RateLimitError } = await import("@cursor/sdk");
+    const send = vi.fn().mockRejectedValue(new RateLimitError("rate"));
+    const close = vi.fn().mockResolvedValue(undefined);
+    (Agent.create as ReturnType<typeof vi.fn>).mockResolvedValue({ send, close });
+
+    const { tool } = await loadTool();
+    await expect(tool.execute({ prompt: "hi" })).rejects.toBeInstanceOf(RateLimitError);
+
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it("T10c: agent is undefined when Agent.create throws; no close call attempted", async () => {
+    process.env.CURSOR_API_KEY = "sk-test-12345";
+    const { Agent, AuthenticationError } = await import("@cursor/sdk");
+    (Agent.create as ReturnType<typeof vi.fn>).mockRejectedValue(new AuthenticationError("invalid"));
+
+    const { tool } = await loadTool();
+    await expect(tool.execute({ prompt: "hi" })).rejects.toBeInstanceOf(AuthenticationError);
+  });
+
+  it("T11: prompt body is never written to logs", async () => {
+    process.env.CURSOR_API_KEY = "sk-test-12345";
+    const { Agent } = await import("@cursor/sdk");
+    const send = vi.fn().mockResolvedValue({
+      wait: vi.fn().mockResolvedValue({
+        id: "run_log",
+        status: "finished",
+        result: "response-content",
+      }),
+    });
+    const close = vi.fn().mockResolvedValue(undefined);
+    (Agent.create as ReturnType<typeof vi.fn>).mockResolvedValue({ send, close });
+
+    const { tool, log } = await loadTool();
+    await tool.execute({ prompt: "secret-content" });
+
+    const allLogCalls = JSON.stringify([
+      ...log.debug.mock.calls,
+      ...log.info.mock.calls,
+      ...log.warn.mock.calls,
+      ...log.error.mock.calls,
+    ]);
+    expect(allLogCalls).not.toContain("secret-content");
+    expect(allLogCalls).not.toContain("response-content");
+  });
+
+  it("T12: API key is never written to logs", async () => {
+    process.env.CURSOR_API_KEY = "sk-test-12345";
+    const { Agent } = await import("@cursor/sdk");
+    const send = vi.fn().mockResolvedValue({
+      wait: vi.fn().mockResolvedValue({ id: "run_key", status: "finished", result: "ok" }),
+    });
+    const close = vi.fn().mockResolvedValue(undefined);
+    (Agent.create as ReturnType<typeof vi.fn>).mockResolvedValue({ send, close });
+
+    const { tool, log } = await loadTool();
+    await tool.execute({ prompt: "hi" });
+
+    const allLogCalls = JSON.stringify([
+      ...log.debug.mock.calls,
+      ...log.info.mock.calls,
+      ...log.warn.mock.calls,
+      ...log.error.mock.calls,
+    ]);
+    expect(allLogCalls).not.toContain("sk-test-12345");
+  });
 });

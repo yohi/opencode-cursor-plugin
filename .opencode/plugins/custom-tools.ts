@@ -79,8 +79,9 @@ const CustomToolsPlugin = async ({
           const sdk = await import("@cursor/sdk");
           const { Agent, CursorAgentError, NetworkError } = sdk;
 
+          let agent: Awaited<ReturnType<typeof Agent.create>> | undefined;
           try {
-            const agent = await Agent.create({
+            agent = await Agent.create({
               apiKey,
               model: { id: resolvedModelId },
               local: { cwd: process.cwd() },
@@ -139,6 +140,16 @@ const CustomToolsPlugin = async ({
               throw err;
             }
             throw err;
+          } finally {
+            if (agent) {
+              try {
+                await agent.close();
+              } catch (closeErr) {
+                log.warn("cursor_prompt: agent.close failed", {
+                  message: closeErr instanceof Error ? closeErr.message : String(closeErr),
+                });
+              }
+            }
           }
         },
       }),

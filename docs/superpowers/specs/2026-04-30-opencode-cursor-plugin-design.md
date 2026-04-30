@@ -10,6 +10,7 @@
 |---|---|---|
 | 2026-04-30 | v1 | 初版 |
 | 2026-04-30 | v2 | レビュー 2 回目反映: TDD 計画明記 / エッジケース具体化 / `@cursor/sdk` API 確定（`agent.send` + `run.wait` + `ModelSelection` + `CursorAgentError` サブクラス）|
+| 2026-04-30 | v3 | レビュー 3 回目反映: (1) §5.3 / §10.1 / §11 T2/T3 の `model` 必須化（local モード制約に整合、未指定時は `DEFAULT_LOCAL_MODEL = "composer-2"` を substitute）/ (2) §7.1 `run.status` エラー時のログ出力を「`result` 全体」から「サニタイズ済みメタ情報のみ」に変更（§6 機微情報保護ポリシーとの衝突解消）/ (3) §3 アーキテクチャ図 fence に `text` 言語指定を追加（MD040）|
 
 ## 1. 目的とスコープ
 
@@ -33,7 +34,7 @@ OpenCode のプラグインアーキテクチャに準拠し、Cursor 公式 SDK
 
 ## 3. アーキテクチャ概要
 
-```
+```text
 [OpenCode Runtime]
       │ load plugin (.opencode/plugins/custom-tools.ts)
       ▼
@@ -42,6 +43,7 @@ OpenCode のプラグインアーキテクチャに準拠し、Cursor 公式 SDK
       ▼
 [execute(args)]
    ├─ validate process.env.CURSOR_API_KEY (missing → log.error + throw)
+   ├─ resolve model: args.model ?? DEFAULT_LOCAL_MODEL ("composer-2")
    ├─ Agent.create({ apiKey, model: { id }, local: { cwd } })
    ├─ agent.send(args.prompt)               // → Run
    ├─ run.wait()                            // → RunResult
@@ -79,12 +81,12 @@ z.object({
 ### 5.3 execute フロー
 
 1. `process.env.CURSOR_API_KEY` を取得し、欠落時は `log.error` 後に `Error` を throw
-2. `model` 未指定時は `log.warn` でデフォルト使用を記録
-3. `Agent.create({ apiKey, model: { id: <model> } | undefined, local: { cwd: process.cwd() } })` でエージェント生成（`log.info`）
+2. 利用モデル ID を解決する: `const resolvedModelId = args.model ?? DEFAULT_LOCAL_MODEL`（`DEFAULT_LOCAL_MODEL = "composer-2"`、§10.1 で確定）。`args.model` 未指定時は `log.warn` でデフォルトモデル `"composer-2"` を適用したことを記録
+3. `Agent.create({ apiKey, model: { id: resolvedModelId }, local: { cwd: process.cwd() } })` でエージェント生成（`log.info`）。local モードでは `model` が必須のため、必ず解決済み ID を渡す
 4. `agent.send(args.prompt)` を呼び出して `Run` を取得（`log.info`）
 5. `await run.wait()` で完了を待ち、`RunResult` を取得
 6. `result.status === "finished"` の場合のみ `result.result`（`string`）を return
-7. `result.status === "error"` または `"cancelled"` の場合は `log.error` で詳細記録後 `Error` を throw
+7. `result.status === "error"` または `"cancelled"` の場合は `log.error` でサニタイズ済みメタ情報のみ記録後 `Error` を throw（詳細は §7.1 / §6 を参照）
 8. SDK 例外（`CursorAgentError` 系）は `log.error` 後 re-throw（OpenCode 側でユーザーに伝達される前提）
 9. `agent.close()` を `finally` 句で呼び出し、リソースリーク防止
 
@@ -118,8 +120,8 @@ z.object({
 | 認証失敗（無効な API キー） | `Agent.create` または `agent.send` 内 | `AuthenticationError` を catch → `log.error` 後 re-throw | エラーメッセージに認証失敗の旨が含まれる |
 | ネットワーク失敗 | `Agent.create` または `agent.send` 内 | `NetworkError` を catch → `error.isRetryable` をログに記録後 re-throw（リトライは行わない） | エラーメッセージにネットワーク失敗の旨が含まれる |
 | レート制限 | `agent.send` 中 | `RateLimitError` を catch → `log.error` 後 re-throw | エラーメッセージにレート制限の旨が含まれる |
-| `run.status === "error"` | `run.wait()` 後 | `log.error` で `result` 全体（API キー除く）を記録 → `Error("Cursor run finished with status=error")` を throw | エラーメッセージに run の id と status |
-| `run.status === "cancelled"` | `run.wait()` 後 | 同上、`Error("Cursor run was cancelled")` を throw | エラーメッセージに cancellation の旨 |
+| `run.status === "error"` | `run.wait()` 後 | `log.error` でサニタイズ済みメタ情報のみ記録（`runId`, `status`, あれば `error.code`/`error.message` の長さ等。`result.result` 等の応答本文は含めない） → `Error("Cursor run finished with status=error")` を throw | エラーメッセージに run の id と status |
+| `run.status === "cancelled"` | `run.wait()` 後 | 同上のサニタイズ済みメタ情報のみ記録、`Error("Cursor run was cancelled")` を throw | エラーメッセージに cancellation の旨 |
 | その他 `CursorAgentError` 派生 | 任意 | `log.error` 後 re-throw | エラーメッセージとサブクラス名 |
 
 ### 7.2 エッジケースの設計判断
@@ -162,7 +164,7 @@ z.object({
 
 - **`Agent.create(options)`** は `Promise<SDKAgent>` を返す。`options` は次を含む:
   - `apiKey: string`（必須。未指定時は環境変数 `CURSOR_API_KEY` から自動取得）
-  - `model: ModelSelection`（local モードでは必須。形式: `{ id: string }`）
+  - `model: ModelSelection`（**local モードでは必須**。形式: `{ id: string }`）。本設計では local モードを採用するため、ユーザが `args.model` を省略した場合でも実装層で `DEFAULT_LOCAL_MODEL = "composer-2"` を substitute して `Agent.create` には常に解決済みの ID を渡す
   - `local | cloud`: ランタイム設定（いずれか一方が必須。本設計では `local: { cwd: process.cwd() }` を採用）
 - **プロンプト送信メソッド**は `agent.send(message: string | SDKUserMessage, options?): Promise<Run>`
 - **完了取得**は `await run.wait()` で `RunResult` を返す。`RunResult.result: string` に最終応答テキスト、`RunResult.status: "finished" | "error" | "cancelled"`
@@ -191,8 +193,8 @@ z.object({
 | # | ケース | Arrange | Act | Assert |
 |---|---|---|---|---|
 | T1 | API キー欠落 | `process.env.CURSOR_API_KEY` を `delete` | `execute({ prompt: "hi" })` | `Error` が throw され、メッセージに `CURSOR_API_KEY` を含む。`log.error` が 1 回呼ばれる |
-| T2 | 正常系（model 未指定） | API キー設定。`Agent.create` モックが `agent.send` → `run.wait` → `{ status: "finished", result: "ok" }` を返却 | `execute({ prompt: "hi" })` | 戻り値 `"ok"`。`Agent.create` の `model` 引数が `undefined`。`log.warn` が呼ばれる |
-| T3 | 正常系（model 指定） | 同上 + `args.model = "composer-2"` | `execute({ prompt: "hi", model: "composer-2" })` | `Agent.create` の `model` 引数が `{ id: "composer-2" }` |
+| T2 | 正常系（model 未指定 → デフォルト substitute） | API キー設定。`Agent.create` モックが `agent.send` → `run.wait` → `{ status: "finished", result: "ok" }` を返却 | `execute({ prompt: "hi" })` | 戻り値 `"ok"`。`Agent.create` の `model` 引数が `{ id: "composer-2" }`（DEFAULT_LOCAL_MODEL）。`log.warn` が呼ばれ、デフォルト適用が記録されている |
+| T3 | 正常系（model 明示指定） | 同上 + `args.model = "composer-2"` | `execute({ prompt: "hi", model: "composer-2" })` | `Agent.create` の `model` 引数が `{ id: "composer-2" }`。`log.warn` は呼ばれない |
 | T4 | 極端に長い prompt（SDK が `RateLimitError`） | `agent.send` モックが `RateLimitError` を throw | `execute({ prompt: "x".repeat(1_000_000) })` | `RateLimitError` がそのまま throw。`log.error` 呼び出し |
 | T5 | 不正なモデル名（`ConfigurationError`） | `Agent.create` モックが `ConfigurationError("unknown model")` を throw | `execute({ prompt: "hi", model: "no-such-model" })` | `ConfigurationError` がそのまま throw。`log.error` 呼び出し |
 | T6 | 認証失敗 | `Agent.create` モックが `AuthenticationError` を throw | `execute(...)` | `AuthenticationError` がそのまま throw |

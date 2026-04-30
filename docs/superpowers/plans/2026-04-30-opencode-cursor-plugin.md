@@ -936,14 +936,21 @@ pnpm test -- -t "T8|T9"
           }
 
           if (result.status === "error") {
+            const errInfo = (result as any).error;
             log.error("cursor_prompt: run finished with status=error", {
               runId: result.id,
+              status: result.status,
+              errorCode: errInfo?.code,
+              errorMessageLength: errInfo?.message?.length,
             });
             throw new Error(`Cursor run finished with status=error (id=${result.id})`);
           }
 
           if (result.status === "cancelled") {
-            log.error("cursor_prompt: run was cancelled", { runId: result.id });
+            log.error("cursor_prompt: run was cancelled", {
+              runId: result.id,
+              status: result.status,
+            });
             throw new Error(`Cursor run was cancelled (id=${result.id})`);
           }
 
@@ -1116,11 +1123,20 @@ pnpm test -- -t "T4|T5|T6|T7"
               return result.result;
             }
             if (result.status === "error") {
-              log.error("cursor_prompt: run finished with status=error", { runId: result.id });
+              const errInfo = (result as any).error;
+              log.error("cursor_prompt: run finished with status=error", {
+                runId: result.id,
+                status: result.status,
+                errorCode: errInfo?.code,
+                errorMessageLength: errInfo?.message?.length,
+              });
               throw new Error(`Cursor run finished with status=error (id=${result.id})`);
             }
             if (result.status === "cancelled") {
-              log.error("cursor_prompt: run was cancelled", { runId: result.id });
+              log.error("cursor_prompt: run was cancelled", {
+                runId: result.id,
+                status: result.status,
+              });
               throw new Error(`Cursor run was cancelled (id=${result.id})`);
             }
             log.error("cursor_prompt: unexpected run status", { runId: result.id, status: result.status });
@@ -1307,14 +1323,16 @@ pnpm test -- -t "T10|T11|T12"
             throw new Error("CURSOR_API_KEY is not set in the environment");
           }
 
-          const modelSelection = args.model ? { id: args.model } : undefined;
-          if (!modelSelection) {
-            log.warn("cursor_prompt: model omitted; using Cursor SDK default model");
+          const resolvedModelId = args.model ?? DEFAULT_LOCAL_MODEL;
+          if (!args.model) {
+            log.warn("cursor_prompt: model omitted; substituting DEFAULT_LOCAL_MODEL", {
+              defaultModelId: DEFAULT_LOCAL_MODEL,
+            });
           }
 
           log.debug("cursor_prompt invoked", {
             promptLength: args.prompt.length,
-            model: args.model,
+            modelId: resolvedModelId,
           });
 
           const sdk = await import("@cursor/sdk");
@@ -1324,7 +1342,7 @@ pnpm test -- -t "T10|T11|T12"
           try {
             agent = await Agent.create({
               apiKey,
-              model: modelSelection,
+              model: { id: resolvedModelId },
               local: { cwd: process.cwd() },
             });
             log.info("cursor_prompt: agent created");
@@ -1340,11 +1358,20 @@ pnpm test -- -t "T10|T11|T12"
               return result.result;
             }
             if (result.status === "error") {
-              log.error("cursor_prompt: run finished with status=error", { runId: result.id });
+              const errInfo = (result as any).error;
+              log.error("cursor_prompt: run finished with status=error", {
+                runId: result.id,
+                status: result.status,
+                errorCode: errInfo?.code,
+                errorMessageLength: errInfo?.message?.length,
+              });
               throw new Error(`Cursor run finished with status=error (id=${result.id})`);
             }
             if (result.status === "cancelled") {
-              log.error("cursor_prompt: run was cancelled", { runId: result.id });
+              log.error("cursor_prompt: run was cancelled", {
+                runId: result.id,
+                status: result.status,
+              });
               throw new Error(`Cursor run was cancelled (id=${result.id})`);
             }
             log.error("cursor_prompt: unexpected run status", { runId: result.id, status: result.status });

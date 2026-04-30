@@ -76,50 +76,70 @@ const CustomToolsPlugin = async ({
             modelId: resolvedModelId,
           });
 
-          const { Agent } = await import("@cursor/sdk");
-          const agent = await Agent.create({
-            apiKey,
-            model: { id: resolvedModelId },
-            local: { cwd: process.cwd() },
-          });
-          log.info("cursor_prompt: agent created");
+          const sdk = await import("@cursor/sdk");
+          const { Agent, CursorAgentError, NetworkError } = sdk;
 
-          const run = await agent.send(args.prompt);
-          log.info("cursor_prompt: prompt sent");
-          const result = await run.wait();
-
-          if (result.status === "finished") {
-            const responseText = result.result ?? "";
-            log.info("cursor_prompt: run finished", {
-              responseLength: responseText.length,
+          try {
+            const agent = await Agent.create({
+              apiKey,
+              model: { id: resolvedModelId },
+              local: { cwd: process.cwd() },
             });
-            return responseText;
-          }
+            log.info("cursor_prompt: agent created");
 
-          if (result.status === "error") {
-            const errInfo = (result as { error?: { code?: string; message?: string } }).error;
-            log.error("cursor_prompt: run finished with status=error", {
+            const run = await agent.send(args.prompt);
+            log.info("cursor_prompt: prompt sent");
+            const result = await run.wait();
+
+            if (result.status === "finished") {
+              const responseText = result.result ?? "";
+              log.info("cursor_prompt: run finished", {
+                responseLength: responseText.length,
+              });
+              return responseText;
+            }
+
+            if (result.status === "error") {
+              const errInfo = (result as { error?: { code?: string; message?: string } }).error;
+              log.error("cursor_prompt: run finished with status=error", {
+                runId: result.id,
+                status: result.status,
+                errorCode: errInfo?.code,
+                errorMessageLength: errInfo?.message?.length,
+              });
+              throw new Error(`Cursor run finished with status=error (id=${result.id})`);
+            }
+
+            if (result.status === "cancelled") {
+              log.error("cursor_prompt: run was cancelled", {
+                runId: result.id,
+                status: result.status,
+              });
+              throw new Error(`Cursor run was cancelled (id=${result.id})`);
+            }
+
+            log.error("cursor_prompt: unexpected run status", {
               runId: result.id,
               status: result.status,
-              errorCode: errInfo?.code,
-              errorMessageLength: errInfo?.message?.length,
             });
-            throw new Error(`Cursor run finished with status=error (id=${result.id})`);
+            throw new Error(`Cursor run finished with unexpected status (id=${result.id})`);
+          } catch (err) {
+            if (err instanceof NetworkError) {
+              log.error("cursor_prompt: NetworkError", {
+                message: err.message,
+                isRetryable: err.isRetryable,
+              });
+              throw err;
+            }
+            if (err instanceof CursorAgentError) {
+              log.error("cursor_prompt: CursorAgentError", {
+                kind: err.constructor.name,
+                message: err.message,
+              });
+              throw err;
+            }
+            throw err;
           }
-
-          if (result.status === "cancelled") {
-            log.error("cursor_prompt: run was cancelled", {
-              runId: result.id,
-              status: result.status,
-            });
-            throw new Error(`Cursor run was cancelled (id=${result.id})`);
-          }
-
-          log.error("cursor_prompt: unexpected run status", {
-            runId: result.id,
-            status: result.status,
-          });
-          throw new Error(`Cursor run finished with unexpected status (id=${result.id})`);
         },
       }),
     },

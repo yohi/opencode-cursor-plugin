@@ -111,4 +111,34 @@ describe("cursor_prompt", () => {
     expect(t3CreateArg?.model).toEqual({ id: "composer-2" });
     expect(log.warn).not.toHaveBeenCalled();
   });
+
+  it("T8: throws and logs when run.status === 'error'", async () => {
+    process.env.CURSOR_API_KEY = "sk-test-12345";
+    const { Agent } = await import("@cursor/sdk");
+    const send = vi.fn().mockResolvedValue({
+      wait: vi.fn().mockResolvedValue({ id: "run_err", status: "error" }),
+    });
+    const close = vi.fn().mockResolvedValue(undefined);
+    (Agent.create as ReturnType<typeof vi.fn>).mockResolvedValue({ send, close });
+
+    const { tool, log } = await loadTool();
+
+    await expect(tool.execute({ prompt: "hi" })).rejects.toThrow(/status=error/);
+    expect(log.error).toHaveBeenCalled();
+  });
+
+  it("T9: throws and logs when run.status === 'cancelled'", async () => {
+    process.env.CURSOR_API_KEY = "sk-test-12345";
+    const { Agent } = await import("@cursor/sdk");
+    const send = vi.fn().mockResolvedValue({
+      wait: vi.fn().mockResolvedValue({ id: "run_cxl", status: "cancelled" }),
+    });
+    const close = vi.fn().mockResolvedValue(undefined);
+    (Agent.create as ReturnType<typeof vi.fn>).mockResolvedValue({ send, close });
+
+    const { tool, log } = await loadTool();
+
+    await expect(tool.execute({ prompt: "hi" })).rejects.toThrow(/cancelled/);
+    expect(log.error).toHaveBeenCalled();
+  });
 });

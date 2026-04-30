@@ -1429,7 +1429,7 @@ pnpm typecheck
 
 `/home/y_ohi/program/private/opencode-cursor-plugin/README.md`:
 
-```markdown
+````markdown
 # opencode-cursor-plugin
 
 OpenCode 用カスタムツールプラグイン。Cursor 公式 SDK (`@cursor/sdk`) 経由で Cursor エージェントへ任意のプロンプトを送信し、応答テキストを返す `cursor_prompt` ツールを 1 つ提供する。
@@ -1472,7 +1472,7 @@ pnpm test
 ## OpenCode への接続
 
 `.opencode/plugins/custom-tools.ts` を OpenCode が自動ロードする想定。詳細は OpenCode のプラグインドキュメントを参照。
-```
+````
 
 - [ ] **Step 8: 最終確認（Devcontainer 内）**
 

@@ -27,8 +27,8 @@
     "@opencode-ai/plugin": "^0.4.0"
   },
   "pnpm": {
+    "//": "The overrides below are security patches for known vulnerabilities",
     "overrides": {
-      "//": "Security patches for known vulnerabilities",
       "@tootallnate/once": "^3.0.1",
       "tar": "^7.5.11",
       "undici": "^6.24.0"

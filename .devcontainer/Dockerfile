@@ -2,3 +2,5 @@ FROM mcr.microsoft.com/devcontainers/typescript-node:20@sha256:e37faeaf8e940ea41
 
 # Enable corepack and pin pnpm version
 RUN corepack enable && corepack prepare pnpm@9.12.0 --activate && [ "$(pnpm --version)" = "9.12.0" ]
+
+USER node

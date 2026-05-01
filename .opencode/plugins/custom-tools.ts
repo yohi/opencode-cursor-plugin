@@ -5,10 +5,12 @@ import { z } from "zod";
 const args = {
   prompt: z
     .string()
+    .trim()
     .min(1)
     .describe("Cursor エージェントへ送信するユーザープロンプト本文"),
   model: z
     .string()
+    .trim()
     .min(1)
     .optional()
     .describe(

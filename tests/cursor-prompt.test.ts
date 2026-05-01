@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { PluginInput, Hooks } from "@opencode-ai/plugin";
 
 vi.mock("@cursor/sdk", () => {
   const Agent = {
@@ -35,20 +36,33 @@ interface FakeLog {
   error: ReturnType<typeof vi.fn>;
 }
 
-function makeContext(): { context: any; log: FakeLog } {
+interface ToolDefinition {
+  execute(args: Record<string, unknown>): Promise<unknown>;
+}
+
+function makeContext(): { context: PluginInput; log: FakeLog } {
   const log: FakeLog = {
     debug: vi.fn(),
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
   };
-  return { context: { app: { log } }, log };
+  // PluginInput として必要な最小限のプロパティをモックし、
+  // 元のコードが期待している 'app' プロパティを強引に追加します。
+  const context = {
+    app: { log },
+  } as unknown as PluginInput;
+  return { context, log };
 }
 
 async function loadTool() {
   const { context, log } = makeContext();
-  const plugin = await CustomToolsPlugin(context);
-  return { tool: (plugin as any).tool.cursor_prompt, log };
+  const plugin = (await CustomToolsPlugin(context)) as Hooks;
+  const tool = plugin.tool?.cursor_prompt as unknown as ToolDefinition;
+  if (!tool) {
+    throw new Error("cursor_prompt tool not found in plugin");
+  }
+  return { tool, log };
 }
 
 describe("cursor_prompt", () => {

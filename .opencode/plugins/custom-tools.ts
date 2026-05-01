@@ -144,8 +144,12 @@ const CustomToolsPlugin: Plugin = async (input: PluginInput): Promise<Hooks> => 
             throw err;
           } finally {
             if (agent) {
-              await agent.close();
-              log.info("cursor_prompt: agent closed");
+              try {
+                await agent.close();
+                log.info("cursor_prompt: agent closed");
+              } catch (closeErr) {
+                log.warn("cursor_prompt: agent.close failed", closeErr);
+              }
             }
           }
         },

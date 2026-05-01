@@ -40,7 +40,15 @@ interface ToolDefinition {
   execute(args: Record<string, unknown>): Promise<unknown>;
 }
 
-function makeContext(): { context: any; log: FakeLog } {
+interface FakeContext {
+  client: {
+    app: {
+      log: FakeLog;
+    };
+  };
+}
+
+function makeContext(): { context: FakeContext; log: FakeLog } {
   const log: FakeLog = {
     debug: vi.fn(),
     info: vi.fn(),
@@ -48,7 +56,7 @@ function makeContext(): { context: any; log: FakeLog } {
     error: vi.fn(),
   };
   // CustomToolsPlugin が期待する v3 の PluginInput 構造 ({ client: { app: { log } } }) を作成します。
-  const context = {
+  const context: FakeContext = {
     client: {
       app: { log },
     },

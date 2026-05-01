@@ -78,10 +78,10 @@ async function loadTool() {
  * Agent.create, agent.send, agent.close のモックをセットアップするヘルパー
  */
 async function setupAgentMock(opts: {
-  sendResult?: any;
-  sendError?: any;
-  closeError?: any;
-  createError?: any;
+  sendResult?: Record<string, unknown>;
+  sendError?: unknown;
+  closeError?: unknown;
+  createError?: unknown;
 } = {}) {
   const { Agent } = await import("@cursor/sdk");
   const close = opts.closeError
@@ -166,7 +166,7 @@ describe("cursor_prompt", () => {
 
   it("T3: forwards explicit model to Agent.create as { id } and does not warn", async () => {
     process.env.CURSOR_API_KEY = "sk-test-12345";
-    const { send, close, Agent } = await setupAgentMock({
+    const { close, Agent } = await setupAgentMock({
       sendResult: { id: "run_2", status: "finished", result: "ok2" },
     });
 

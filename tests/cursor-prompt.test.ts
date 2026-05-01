@@ -118,6 +118,7 @@ describe("cursor_prompt", () => {
     expect(t2CreateArg?.model).toEqual({ id: "composer-2" });
     expect(log.warn).toHaveBeenCalled();
     expect(send).toHaveBeenCalledWith("hi");
+    expect(close).toHaveBeenCalled();
   });
 
   it("T3: forwards explicit model to Agent.create as { id } and does not warn", async () => {
@@ -131,13 +132,14 @@ describe("cursor_prompt", () => {
 
     const { tool, log } = await loadTool();
 
-    const out = await tool.execute({ prompt: "hi", model: "composer-2" });
+    const out = await tool.execute({ prompt: "hi", model: "composer-explicit-1" });
 
     expect(out).toBe("ok2");
     expect(Agent.create).toHaveBeenCalledTimes(1);
     const t3CreateArg = (Agent.create as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
-    expect(t3CreateArg?.model).toEqual({ id: "composer-2" });
+    expect(t3CreateArg?.model).toEqual({ id: "composer-explicit-1" });
     expect(log.warn).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalled();
   });
 
   it("T8: throws and logs when run.status === 'error'", async () => {

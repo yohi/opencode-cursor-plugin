@@ -91,6 +91,7 @@ const CustomToolsPlugin: Plugin = async ({ client }): Promise<Hooks> => {
           const { Agent, CursorAgentError, NetworkError } = sdk;
 
           let agent: Awaited<ReturnType<typeof Agent.create>> | undefined;
+          let result: Awaited<ReturnType<Awaited<ReturnType<typeof Agent.create>>["send"]>>["wait"] extends () => Promise<infer R> ? R : any;
           try {
             agent = await Agent.create({
               apiKey: trimmedApiKey,
@@ -101,40 +102,7 @@ const CustomToolsPlugin: Plugin = async ({ client }): Promise<Hooks> => {
 
             const run = await agent.send(args.prompt);
             log.info("cursor_prompt: prompt sent");
-            const result = await run.wait();
-
-            if (result.status === "finished") {
-              const responseText = result.result ?? "";
-              log.info("cursor_prompt: run finished", {
-                responseLength: responseText.length,
-              });
-              return responseText;
-            }
-
-            if (result.status === "error") {
-              const errInfo = (result as { error?: { code?: string; message?: string } }).error;
-              log.error("cursor_prompt: run finished with status=error", {
-                runId: result.id,
-                status: result.status,
-                errorCode: errInfo?.code,
-                errorMessageLength: errInfo?.message?.length,
-              });
-              throw new Error(`Cursor run finished with status=error (id=${result.id})`);
-            }
-
-            if (result.status === "cancelled") {
-              log.warn("cursor_prompt: run was cancelled", {
-                runId: result.id,
-                status: result.status,
-              });
-              throw new Error(`Cursor run was cancelled (id=${result.id})`);
-            }
-
-            log.error("cursor_prompt: unexpected run status", {
-              runId: result.id,
-              status: result.status,
-            });
-            throw new Error(`Cursor run finished with unexpected status (id=${result.id}, status=${result.status})`);
+            result = await run.wait();
           } catch (err) {
             if (err instanceof NetworkError) {
               log.error("cursor_prompt: NetworkError", {
@@ -167,6 +135,39 @@ const CustomToolsPlugin: Plugin = async ({ client }): Promise<Hooks> => {
               }
             }
           }
+
+          if (result.status === "finished") {
+            const responseText = result.result ?? "";
+            log.info("cursor_prompt: run finished", {
+              responseLength: responseText.length,
+            });
+            return responseText;
+          }
+
+          if (result.status === "error") {
+            const errInfo = (result as { error?: { code?: string; message?: string } }).error;
+            log.error("cursor_prompt: run finished with status=error", {
+              runId: result.id,
+              status: result.status,
+              errorCode: errInfo?.code,
+              errorMessageLength: errInfo?.message?.length,
+            });
+            throw new Error(`Cursor run finished with status=error (id=${result.id})`);
+          }
+
+          if (result.status === "cancelled") {
+            log.warn("cursor_prompt: run was cancelled", {
+              runId: result.id,
+              status: result.status,
+            });
+            throw new Error(`Cursor run was cancelled (id=${result.id})`);
+          }
+
+          log.error("cursor_prompt: unexpected run status", {
+            runId: result.id,
+            status: result.status,
+          });
+          throw new Error(`Cursor run finished with unexpected status (id=${result.id}, status=${result.status})`);
         },
       }),
     },

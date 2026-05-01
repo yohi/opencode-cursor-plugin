@@ -205,7 +205,7 @@ describe("cursor_prompt", () => {
     const { tool, log } = await loadTool();
 
     await expect(tool.execute({ prompt: "hi" })).rejects.toBeInstanceOf(RateLimitError);
-    expect(log.error).toHaveBeenCalled();
+    expect(log.error).toHaveBeenCalledTimes(1);
   });
 
   it("T5: re-throws ConfigurationError from Agent.create for unknown model", async () => {
@@ -218,7 +218,7 @@ describe("cursor_prompt", () => {
     await expect(tool.execute({ prompt: "hi", model: "no-such-model" })).rejects.toBeInstanceOf(
       ConfigurationError,
     );
-    expect(log.error).toHaveBeenCalled();
+    expect(log.error).toHaveBeenCalledTimes(1);
   });
 
   it("T6: re-throws AuthenticationError from Agent.create and logs error", async () => {
@@ -229,7 +229,7 @@ describe("cursor_prompt", () => {
     const { tool, log } = await loadTool();
 
     await expect(tool.execute({ prompt: "hi" })).rejects.toBeInstanceOf(AuthenticationError);
-    expect(log.error).toHaveBeenCalled();
+    expect(log.error).toHaveBeenCalledTimes(1);
   });
 
   it("T6.1: preserves original RateLimitError when agent.close fails", async () => {
@@ -243,7 +243,7 @@ describe("cursor_prompt", () => {
     const { tool, log } = await loadTool();
 
     await expect(tool.execute({ prompt: "hi" })).rejects.toBeInstanceOf(RateLimitError);
-    expect(log.error).toHaveBeenCalled();
+    expect(log.error).toHaveBeenCalledTimes(1);
     expect(log.warn).toHaveBeenCalledWith("cursor_prompt: agent.close failed", {
       message: "close failed",
     });
@@ -257,6 +257,7 @@ describe("cursor_prompt", () => {
     const { tool, log } = await loadTool();
 
     await expect(tool.execute({ prompt: "hi" })).rejects.toBeInstanceOf(NetworkError);
+    expect(log.error).toHaveBeenCalledTimes(1);
     const errorCalls = log.error.mock.calls.flat();
     const stringified = JSON.stringify(errorCalls);
     expect(stringified).toContain("isRetryable");
@@ -271,6 +272,7 @@ describe("cursor_prompt", () => {
     const { tool, log } = await loadTool();
 
     await expect(tool.execute({ prompt: "hi" })).rejects.toThrow(/status=error/);
+    expect(log.error).toHaveBeenCalledTimes(1);
     expect(log.error).toHaveBeenCalledWith(
       "cursor_prompt: run finished with status=error",
       expect.objectContaining({
@@ -289,7 +291,8 @@ describe("cursor_prompt", () => {
 
     const { tool, log } = await loadTool();
 
-    await expect(tool.execute({ prompt: "hi" })).rejects.toThrow(/cancelled/);
+    await expect(tool.execute({ prompt: "hi", model: "composer-2" })).rejects.toThrow(/cancelled/);
+    expect(log.warn).toHaveBeenCalledTimes(1);
     expect(log.warn).toHaveBeenCalledWith(
       "cursor_prompt: run was cancelled",
       expect.objectContaining({
@@ -311,6 +314,7 @@ describe("cursor_prompt", () => {
     await expect(tool.execute({ prompt: "hi" })).rejects.toThrow(
       /unexpected status \(id=run_unknown, status=weird\)/,
     );
+    expect(log.error).toHaveBeenCalledTimes(1);
     expect(log.error).toHaveBeenCalledWith(
       "cursor_prompt: unexpected run status",
       expect.objectContaining({
@@ -402,6 +406,7 @@ describe("cursor_prompt", () => {
     const { tool, log } = await loadTool();
 
     await expect(tool.execute({ prompt: "hi" })).rejects.toThrow("Unexpected type error");
+    expect(log.error).toHaveBeenCalledTimes(1);
     expect(log.error).toHaveBeenCalledWith(
       "cursor_prompt: unexpected error during tool execution",
       expect.objectContaining({

@@ -1,4 +1,4 @@
-import type { Plugin, PluginInput, Hooks } from "@opencode-ai/plugin";
+import { tool, type Plugin, type Hooks, type PluginInput } from "@opencode-ai/plugin";
 import { config as loadDotenv } from "dotenv";
 import { z } from "zod";
 
@@ -26,20 +26,28 @@ const args = {
 
 type CursorPromptArgs = z.infer<z.ZodObject<typeof args>>;
 
-interface ExtendedPluginInput extends PluginInput {
-  app?: {
-    log: {
-      error(message: string, data?: unknown): void;
-      warn(message: string, data?: unknown): void;
-      debug(message: string, data?: unknown): void;
-      info(message: string, data?: unknown): void;
-    };
-  };
+// OpenCode v3 の PluginInput には app.log が直接存在しない可能性があるため、
+// テストと実際のランタイムの両方で動作するように、明示的な型定義とラッパーを使用します。
+interface AppLog {
+  error(message: string, data?: unknown): void;
+  warn(message: string, data?: unknown): void;
+  debug(message: string, data?: unknown): void;
+  info(message: string, data?: unknown): void;
 }
 
 const CustomToolsPlugin: Plugin = async (input: PluginInput): Promise<Hooks> => {
-  const extendedInput = input as ExtendedPluginInput;
-  const log = extendedInput.app?.log;
+  // PluginInput (v3) の引数は { client } ですが、テストコードは PluginInput そのものを context として渡しています。
+  // また、テストは context.app.log を期待しています。
+  // ここでは両方のパターンに対応できるようにします。
+  const anyInput = input as any;
+  const rawLog = anyInput.client?.app?.log ?? anyInput.app?.log;
+
+  const log: AppLog = {
+    error: (m, d) => (typeof rawLog?.error === "function" ? rawLog.error(m, d) : console.error(m, d)),
+    warn: (m, d) => (typeof rawLog?.warn === "function" ? rawLog.warn(m, d) : console.warn(m, d)),
+    debug: (m, d) => (typeof rawLog?.debug === "function" ? rawLog.debug(m, d) : console.debug(m, d)),
+    info: (m, d) => (typeof rawLog?.info === "function" ? rawLog.info(m, d) : console.info(m, d)),
+  };
 
   // loadDotenv をプラグイン実行時に呼び出す
   if (process.env.NODE_ENV !== "test") {
@@ -48,18 +56,10 @@ const CustomToolsPlugin: Plugin = async (input: PluginInput): Promise<Hooks> => 
 
   return {
     tool: {
-      cursor_prompt: {
+      cursor_prompt: tool({
         description: `Cursor エージェントへ任意のプロンプトを送信し、応答テキストを取得します。引数 prompt は必須、model はオプション（未指定時は DEFAULT_LOCAL_MODEL "${DEFAULT_LOCAL_MODEL}" を使用）。`,
         args: args,
         async execute(args: CursorPromptArgs) {
-          const rawLog = (input as ExtendedPluginInput).app?.log;
-          const log = {
-            error: (m: string, d?: unknown) => rawLog?.error(m, d),
-            warn: (m: string, d?: unknown) => rawLog?.warn(m, d),
-            debug: (m: string, d?: unknown) => rawLog?.debug(m, d),
-            info: (m: string, d?: unknown) => rawLog?.info(m, d),
-          };
-
           const apiKey = process.env.CURSOR_API_KEY;
           if (apiKey == null || apiKey.trim() === "") {
             log.error("CURSOR_API_KEY is not set or blank; cursor_prompt cannot run", { apiKey });
@@ -155,9 +155,9 @@ const CustomToolsPlugin: Plugin = async (input: PluginInput): Promise<Hooks> => 
             }
           }
         },
-      },
+      }),
     },
-  } as unknown as Hooks;
+  };
 };
 
 export default CustomToolsPlugin;

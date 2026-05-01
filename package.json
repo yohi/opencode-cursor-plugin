@@ -6,7 +6,7 @@
   "type": "module",
   "engines": {
     "node": ">=20.0.0",
-    "pnpm": ">=9.0.0"
+    "pnpm": "9.12.0"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -25,7 +25,7 @@
     "vitest": "^1.6.0"
   },
   "peerDependencies": {
-    "@opencode-ai/plugin": "^0.4.0"
+    "@opencode-ai/plugin": "^1.14.30"
   },
   "pnpm": {
     "//": "The overrides below are security patches for known vulnerabilities",

@@ -12,5 +12,5 @@
     "verbatimModuleSyntax": true,
     "types": ["node", "vitest/globals"]
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts", "vitest.config.ts"]
+  "include": [".opencode/plugins/**/*.ts", "tests/**/*.ts", "vitest.config.ts"]
 }

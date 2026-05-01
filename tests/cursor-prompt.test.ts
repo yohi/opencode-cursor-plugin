@@ -154,7 +154,11 @@ describe("cursor_prompt", () => {
     const { tool, log } = await loadTool();
 
     await expect(tool.execute({ prompt: "hi" })).rejects.toThrow(/status=error/);
-    expect(log.error).toHaveBeenCalled();
+    expect(log.error).toHaveBeenCalledWith("cursor_prompt: run finished with status=error", expect.objectContaining({
+      runId: "run_err",
+      status: "error",
+    }));
+    expect(close).toHaveBeenCalled();
   });
 
   it("T9: throws and logs when run.status === 'cancelled'", async () => {
@@ -169,6 +173,29 @@ describe("cursor_prompt", () => {
     const { tool, log } = await loadTool();
 
     await expect(tool.execute({ prompt: "hi" })).rejects.toThrow(/cancelled/);
-    expect(log.error).toHaveBeenCalled();
+    expect(log.warn).toHaveBeenCalledWith("cursor_prompt: run was cancelled", expect.objectContaining({
+      runId: "run_cxl",
+      status: "cancelled",
+    }));
+    expect(close).toHaveBeenCalled();
+  });
+
+  it("T10: throws and logs when run.status is unexpected", async () => {
+    process.env.CURSOR_API_KEY = "sk-test-12345";
+    const { Agent } = await import("@cursor/sdk");
+    const send = vi.fn().mockResolvedValue({
+      wait: vi.fn().mockResolvedValue({ id: "run_unknown", status: "weird" }),
+    });
+    const close = vi.fn().mockResolvedValue(undefined);
+    (Agent.create as ReturnType<typeof vi.fn>).mockResolvedValue({ send, close });
+
+    const { tool, log } = await loadTool();
+
+    await expect(tool.execute({ prompt: "hi" })).rejects.toThrow(/unexpected status \(id=run_unknown, status=weird\)/);
+    expect(log.error).toHaveBeenCalledWith("cursor_prompt: unexpected run status", expect.objectContaining({
+      runId: "run_unknown",
+      status: "weird",
+    }));
+    expect(close).toHaveBeenCalled();
   });
 });

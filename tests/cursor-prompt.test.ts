@@ -57,7 +57,7 @@ function makeContext(): { context: FakeContext; log: FakeLog } {
     error: vi.fn(),
   };
   // SDK の log メソッドは関数なので、モック関数としても動作するようにします
-  const logMethod = vi.fn() as any;
+  const logMethod = vi.fn() as unknown as PluginInput["client"]["app"]["log"] & FakeLog;
   Object.assign(logMethod, log);
 
   // CustomToolsPlugin が期待する v3 の PluginInput 構造を作成します。
@@ -66,12 +66,14 @@ function makeContext(): { context: FakeContext; log: FakeLog } {
       app: { log: logMethod },
     },
     // その他の必須プロパティをスタブとして追加
-    project: {} as any,
+    project: {} as unknown as PluginInput["project"],
     directory: "",
     worktree: "",
-    experimental_workspace: {} as any,
+    experimental_workspace: {
+      register: vi.fn(),
+    } as unknown as PluginInput["experimental_workspace"],
     serverUrl: new URL("http://localhost"),
-    $: {} as any,
+    $: {} as unknown as PluginInput["$"],
   } as unknown as FakeContext;
 
   return { context, log };

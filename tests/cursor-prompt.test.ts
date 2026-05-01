@@ -74,6 +74,43 @@ async function loadTool() {
   return { tool, log };
 }
 
+/**
+ * Agent.create, agent.send, agent.close のモックをセットアップするヘルパー
+ */
+async function setupAgentMock(opts: {
+  sendResult?: any;
+  sendError?: any;
+  closeError?: any;
+  createError?: any;
+} = {}) {
+  const { Agent } = await import("@cursor/sdk");
+  const close = opts.closeError
+    ? vi.fn().mockRejectedValue(opts.closeError)
+    : vi.fn().mockResolvedValue(undefined);
+
+  const send = vi.fn();
+  if (opts.sendError) {
+    send.mockRejectedValue(opts.sendError);
+  } else {
+    send.mockResolvedValue({
+      wait: vi.fn().mockResolvedValue({
+        id: "default_run_id",
+        status: "finished",
+        result: "ok",
+        ...opts.sendResult,
+      }),
+    });
+  }
+
+  if (opts.createError) {
+    (Agent.create as ReturnType<typeof vi.fn>).mockRejectedValue(opts.createError);
+  } else {
+    (Agent.create as ReturnType<typeof vi.fn>).mockResolvedValue({ send, close });
+  }
+
+  return { send, close, Agent };
+}
+
 describe("cursor_prompt", () => {
   const ORIGINAL_ENV = { ...process.env };
 
@@ -110,12 +147,9 @@ describe("cursor_prompt", () => {
 
   it("T2: substitutes DEFAULT_LOCAL_MODEL and warns when model is omitted", async () => {
     process.env.CURSOR_API_KEY = "sk-test-12345";
-    const { Agent } = await import("@cursor/sdk");
-    const send = vi.fn().mockResolvedValue({
-      wait: vi.fn().mockResolvedValue({ id: "run_1", status: "finished", result: "ok" }),
+    const { send, close, Agent } = await setupAgentMock({
+      sendResult: { id: "run_1", status: "finished", result: "ok" },
     });
-    const close = vi.fn().mockResolvedValue(undefined);
-    (Agent.create as ReturnType<typeof vi.fn>).mockResolvedValue({ send, close });
 
     const { tool, log } = await loadTool();
 
@@ -132,12 +166,9 @@ describe("cursor_prompt", () => {
 
   it("T3: forwards explicit model to Agent.create as { id } and does not warn", async () => {
     process.env.CURSOR_API_KEY = "sk-test-12345";
-    const { Agent } = await import("@cursor/sdk");
-    const send = vi.fn().mockResolvedValue({
-      wait: vi.fn().mockResolvedValue({ id: "run_2", status: "finished", result: "ok2" }),
+    const { send, close, Agent } = await setupAgentMock({
+      sendResult: { id: "run_2", status: "finished", result: "ok2" },
     });
-    const close = vi.fn().mockResolvedValue(undefined);
-    (Agent.create as ReturnType<typeof vi.fn>).mockResolvedValue({ send, close });
 
     const { tool, log } = await loadTool();
 
@@ -153,10 +184,8 @@ describe("cursor_prompt", () => {
 
   it("T4: re-throws RateLimitError from agent.send and logs error", async () => {
     process.env.CURSOR_API_KEY = "sk-test-12345";
-    const { Agent, RateLimitError } = await import("@cursor/sdk");
-    const send = vi.fn().mockRejectedValue(new RateLimitError("rate limited"));
-    const close = vi.fn().mockResolvedValue(undefined);
-    (Agent.create as ReturnType<typeof vi.fn>).mockResolvedValue({ send, close });
+    const { RateLimitError } = await import("@cursor/sdk");
+    await setupAgentMock({ sendError: new RateLimitError("rate limited") });
 
     const { tool, log } = await loadTool();
 
@@ -166,10 +195,8 @@ describe("cursor_prompt", () => {
 
   it("T5: re-throws ConfigurationError from Agent.create for unknown model", async () => {
     process.env.CURSOR_API_KEY = "sk-test-12345";
-    const { Agent, ConfigurationError } = await import("@cursor/sdk");
-    (Agent.create as ReturnType<typeof vi.fn>).mockRejectedValue(
-      new ConfigurationError("unknown model"),
-    );
+    const { ConfigurationError } = await import("@cursor/sdk");
+    await setupAgentMock({ createError: new ConfigurationError("unknown model") });
 
     const { tool, log } = await loadTool();
 
@@ -181,8 +208,8 @@ describe("cursor_prompt", () => {
 
   it("T6: re-throws AuthenticationError from Agent.create and logs error", async () => {
     process.env.CURSOR_API_KEY = "sk-test-12345";
-    const { Agent, AuthenticationError } = await import("@cursor/sdk");
-    (Agent.create as ReturnType<typeof vi.fn>).mockRejectedValue(new AuthenticationError("invalid key"));
+    const { AuthenticationError } = await import("@cursor/sdk");
+    await setupAgentMock({ createError: new AuthenticationError("invalid key") });
 
     const { tool, log } = await loadTool();
 
@@ -192,10 +219,11 @@ describe("cursor_prompt", () => {
 
   it("T6.1: preserves original RateLimitError when agent.close fails", async () => {
     process.env.CURSOR_API_KEY = "sk-test-12345";
-    const { Agent, RateLimitError } = await import("@cursor/sdk");
-    const send = vi.fn().mockRejectedValue(new RateLimitError("rate limited"));
-    const close = vi.fn().mockRejectedValue(new Error("close failed"));
-    (Agent.create as ReturnType<typeof vi.fn>).mockResolvedValue({ send, close });
+    const { RateLimitError } = await import("@cursor/sdk");
+    await setupAgentMock({
+      sendError: new RateLimitError("rate limited"),
+      closeError: new Error("close failed"),
+    });
 
     const { tool, log } = await loadTool();
 
@@ -208,10 +236,8 @@ describe("cursor_prompt", () => {
 
   it("T7: re-throws NetworkError and logs isRetryable", async () => {
     process.env.CURSOR_API_KEY = "sk-test-12345";
-    const { Agent, NetworkError } = await import("@cursor/sdk");
-    const send = vi.fn().mockRejectedValue(new NetworkError("network down", { isRetryable: true }));
-    const close = vi.fn().mockResolvedValue(undefined);
-    (Agent.create as ReturnType<typeof vi.fn>).mockResolvedValue({ send, close });
+    const { NetworkError } = await import("@cursor/sdk");
+    await setupAgentMock({ sendError: new NetworkError("network down", { isRetryable: true }) });
 
     const { tool, log } = await loadTool();
 
@@ -223,69 +249,68 @@ describe("cursor_prompt", () => {
 
   it("T8: throws and logs when run.status === 'error'", async () => {
     process.env.CURSOR_API_KEY = "sk-test-12345";
-    const { Agent } = await import("@cursor/sdk");
-    const send = vi.fn().mockResolvedValue({
-      wait: vi.fn().mockResolvedValue({ id: "run_err", status: "error" }),
+    const { close } = await setupAgentMock({
+      sendResult: { id: "run_err", status: "error" },
     });
-    const close = vi.fn().mockResolvedValue(undefined);
-    (Agent.create as ReturnType<typeof vi.fn>).mockResolvedValue({ send, close });
 
     const { tool, log } = await loadTool();
 
     await expect(tool.execute({ prompt: "hi" })).rejects.toThrow(/status=error/);
-    expect(log.error).toHaveBeenCalledWith("cursor_prompt: run finished with status=error", expect.objectContaining({
-      runId: "run_err",
-      status: "error",
-    }));
+    expect(log.error).toHaveBeenCalledWith(
+      "cursor_prompt: run finished with status=error",
+      expect.objectContaining({
+        runId: "run_err",
+        status: "error",
+      }),
+    );
     expect(close).toHaveBeenCalled();
   });
 
   it("T9: throws and logs when run.status === 'cancelled'", async () => {
     process.env.CURSOR_API_KEY = "sk-test-12345";
-    const { Agent } = await import("@cursor/sdk");
-    const send = vi.fn().mockResolvedValue({
-      wait: vi.fn().mockResolvedValue({ id: "run_cxl", status: "cancelled" }),
+    const { close } = await setupAgentMock({
+      sendResult: { id: "run_cxl", status: "cancelled" },
     });
-    const close = vi.fn().mockResolvedValue(undefined);
-    (Agent.create as ReturnType<typeof vi.fn>).mockResolvedValue({ send, close });
 
     const { tool, log } = await loadTool();
 
     await expect(tool.execute({ prompt: "hi" })).rejects.toThrow(/cancelled/);
-    expect(log.warn).toHaveBeenCalledWith("cursor_prompt: run was cancelled", expect.objectContaining({
-      runId: "run_cxl",
-      status: "cancelled",
-    }));
+    expect(log.warn).toHaveBeenCalledWith(
+      "cursor_prompt: run was cancelled",
+      expect.objectContaining({
+        runId: "run_cxl",
+        status: "cancelled",
+      }),
+    );
     expect(close).toHaveBeenCalled();
   });
 
   it("T10: throws and logs when run.status is unexpected", async () => {
     process.env.CURSOR_API_KEY = "sk-test-12345";
-    const { Agent } = await import("@cursor/sdk");
-    const send = vi.fn().mockResolvedValue({
-      wait: vi.fn().mockResolvedValue({ id: "run_unknown", status: "weird" }),
+    const { close } = await setupAgentMock({
+      sendResult: { id: "run_unknown", status: "weird" },
     });
-    const close = vi.fn().mockResolvedValue(undefined);
-    (Agent.create as ReturnType<typeof vi.fn>).mockResolvedValue({ send, close });
 
     const { tool, log } = await loadTool();
 
-    await expect(tool.execute({ prompt: "hi" })).rejects.toThrow(/unexpected status \(id=run_unknown, status=weird\)/);
-    expect(log.error).toHaveBeenCalledWith("cursor_prompt: unexpected run status", expect.objectContaining({
-      runId: "run_unknown",
-      status: "weird",
-    }));
+    await expect(tool.execute({ prompt: "hi" })).rejects.toThrow(
+      /unexpected status \(id=run_unknown, status=weird\)/,
+    );
+    expect(log.error).toHaveBeenCalledWith(
+      "cursor_prompt: unexpected run status",
+      expect.objectContaining({
+        runId: "run_unknown",
+        status: "weird",
+      }),
+    );
     expect(close).toHaveBeenCalled();
   });
 
   it("T10a: agent.close is called on success", async () => {
     process.env.CURSOR_API_KEY = "sk-test-12345";
-    const { Agent } = await import("@cursor/sdk");
-    const send = vi.fn().mockResolvedValue({
-      wait: vi.fn().mockResolvedValue({ id: "run_ok", status: "finished", result: "ok" }),
+    const { close } = await setupAgentMock({
+      sendResult: { id: "run_ok", status: "finished", result: "ok" },
     });
-    const close = vi.fn().mockResolvedValue(undefined);
-    (Agent.create as ReturnType<typeof vi.fn>).mockResolvedValue({ send, close });
 
     const { tool } = await loadTool();
     await tool.execute({ prompt: "hi" });
@@ -295,10 +320,8 @@ describe("cursor_prompt", () => {
 
   it("T10b: agent.close is called when send throws", async () => {
     process.env.CURSOR_API_KEY = "sk-test-12345";
-    const { Agent, RateLimitError } = await import("@cursor/sdk");
-    const send = vi.fn().mockRejectedValue(new RateLimitError("rate"));
-    const close = vi.fn().mockResolvedValue(undefined);
-    (Agent.create as ReturnType<typeof vi.fn>).mockResolvedValue({ send, close });
+    const { RateLimitError } = await import("@cursor/sdk");
+    const { close } = await setupAgentMock({ sendError: new RateLimitError("rate") });
 
     const { tool } = await loadTool();
     await expect(tool.execute({ prompt: "hi" })).rejects.toBeInstanceOf(RateLimitError);
@@ -308,8 +331,8 @@ describe("cursor_prompt", () => {
 
   it("T10c: agent is undefined when Agent.create throws; no close call attempted", async () => {
     process.env.CURSOR_API_KEY = "sk-test-12345";
-    const { Agent, AuthenticationError } = await import("@cursor/sdk");
-    (Agent.create as ReturnType<typeof vi.fn>).mockRejectedValue(new AuthenticationError("invalid"));
+    const { AuthenticationError } = await import("@cursor/sdk");
+    await setupAgentMock({ createError: new AuthenticationError("invalid") });
 
     const { tool } = await loadTool();
     await expect(tool.execute({ prompt: "hi" })).rejects.toBeInstanceOf(AuthenticationError);
@@ -317,16 +340,13 @@ describe("cursor_prompt", () => {
 
   it("T11: prompt body is never written to logs", async () => {
     process.env.CURSOR_API_KEY = "sk-test-12345";
-    const { Agent } = await import("@cursor/sdk");
-    const send = vi.fn().mockResolvedValue({
-      wait: vi.fn().mockResolvedValue({
+    await setupAgentMock({
+      sendResult: {
         id: "run_log",
         status: "finished",
         result: "response-content",
-      }),
+      },
     });
-    const close = vi.fn().mockResolvedValue(undefined);
-    (Agent.create as ReturnType<typeof vi.fn>).mockResolvedValue({ send, close });
 
     const { tool, log } = await loadTool();
     await tool.execute({ prompt: "secret-content" });
@@ -343,12 +363,9 @@ describe("cursor_prompt", () => {
 
   it("T12: API key is never written to logs", async () => {
     process.env.CURSOR_API_KEY = "sk-test-12345";
-    const { Agent } = await import("@cursor/sdk");
-    const send = vi.fn().mockResolvedValue({
-      wait: vi.fn().mockResolvedValue({ id: "run_key", status: "finished", result: "ok" }),
+    await setupAgentMock({
+      sendResult: { id: "run_key", status: "finished", result: "ok" },
     });
-    const close = vi.fn().mockResolvedValue(undefined);
-    (Agent.create as ReturnType<typeof vi.fn>).mockResolvedValue({ send, close });
 
     const { tool, log } = await loadTool();
     await tool.execute({ prompt: "hi" });

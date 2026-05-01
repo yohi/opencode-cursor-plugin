@@ -9,7 +9,7 @@ on:
 jobs:
   ci:
     name: typecheck & test (devcontainer)
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:

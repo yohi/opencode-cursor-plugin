@@ -40,18 +40,19 @@ interface ToolDefinition {
   execute(args: Record<string, unknown>): Promise<unknown>;
 }
 
-function makeContext(): { context: PluginInput; log: FakeLog } {
+function makeContext(): { context: any; log: FakeLog } {
   const log: FakeLog = {
     debug: vi.fn(),
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
   };
-  // PluginInput として必要な最小限のプロパティをモックし、
-  // 元のコードが期待している 'app' プロパティを強引に追加します。
+  // CustomToolsPlugin が期待する v3 の PluginInput 構造 ({ client: { app: { log } } }) を作成します。
   const context = {
-    app: { log },
-  } as unknown as PluginInput;
+    client: {
+      app: { log },
+    },
+  };
   return { context, log };
 }
 

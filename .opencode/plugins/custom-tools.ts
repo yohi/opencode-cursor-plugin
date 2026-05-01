@@ -100,7 +100,30 @@ const CustomToolsPlugin: Plugin = async (input: PluginInput): Promise<Hooks> => 
               return responseText;
             }
 
-            throw new Error(`cursor_prompt: unexpected run status ${result.status}`);
+            if (result.status === "error") {
+              const errInfo = (result as { error?: { code?: string; message?: string } }).error;
+              log.error("cursor_prompt: run finished with status=error", {
+                runId: result.id,
+                status: result.status,
+                errorCode: errInfo?.code,
+                errorMessageLength: errInfo?.message?.length,
+              });
+              throw new Error(`Cursor run finished with status=error (id=${result.id})`);
+            }
+
+            if (result.status === "cancelled") {
+              log.warn("cursor_prompt: run was cancelled", {
+                runId: result.id,
+                status: result.status,
+              });
+              throw new Error(`Cursor run was cancelled (id=${result.id})`);
+            }
+
+            log.error("cursor_prompt: unexpected run status", {
+              runId: result.id,
+              status: result.status,
+            });
+            throw new Error(`Cursor run finished with unexpected status (id=${result.id}, status=${result.status})`);
           } finally {
             await agent.close();
             log.info("cursor_prompt: agent closed");

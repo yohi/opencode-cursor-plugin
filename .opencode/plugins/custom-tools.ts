@@ -16,7 +16,7 @@ export const modelSchema = z
   .min(1)
   .optional()
   .describe(
-    "Cursor 側で利用するモデル識別子（例: 'composer-2'）。未指定の場合は SDK のデフォルトを使用",
+    `Cursor 側で利用するモデル識別子（例: 'composer-2'）。未指定の場合は DEFAULT_LOCAL_MODEL ("${DEFAULT_LOCAL_MODEL}") を使用`,
   );
 
 const args = {
@@ -30,6 +30,9 @@ interface ExtendedPluginInput extends PluginInput {
   app?: {
     log: {
       error(message: string, data?: unknown): void;
+      warn(message: string, data?: unknown): void;
+      debug(message: string, data?: unknown): void;
+      info(message: string, data?: unknown): void;
     };
   };
 }
@@ -46,13 +49,20 @@ const CustomToolsPlugin: Plugin = async (input: PluginInput): Promise<Hooks> => 
   return {
     tool: {
       cursor_prompt: {
-        description:
-          "Cursor エージェントへ任意のプロンプトを送信し、応答テキストを取得します。引数 prompt は必須、model はオプション（未指定時は Cursor SDK のデフォルトモデルを使用）。",
+        description: `Cursor エージェントへ任意のプロンプトを送信し、応答テキストを取得します。引数 prompt は必須、model はオプション（未指定時は DEFAULT_LOCAL_MODEL "${DEFAULT_LOCAL_MODEL}" を使用）。`,
         args: args,
         async execute(args: CursorPromptArgs) {
+          const rawLog = (input as ExtendedPluginInput).app?.log;
+          const log = {
+            error: (m: string, d?: unknown) => rawLog?.error(m, d),
+            warn: (m: string, d?: unknown) => rawLog?.warn(m, d),
+            debug: (m: string, d?: unknown) => rawLog?.debug(m, d),
+            info: (m: string, d?: unknown) => rawLog?.info(m, d),
+          };
+
           const apiKey = process.env.CURSOR_API_KEY;
           if (apiKey == null || apiKey.trim() === "") {
-            log?.error("CURSOR_API_KEY is not set or blank; cursor_prompt cannot run", { apiKey });
+            log.error("CURSOR_API_KEY is not set or blank; cursor_prompt cannot run", { apiKey });
             throw new Error("CURSOR_API_KEY is not set in the environment");
           }
 
@@ -71,8 +81,9 @@ const CustomToolsPlugin: Plugin = async (input: PluginInput): Promise<Hooks> => 
           const sdk = await import("@cursor/sdk");
           const { Agent, CursorAgentError, NetworkError } = sdk;
 
+          let agent;
           try {
-            const agent = await Agent.create({
+            agent = await Agent.create({
               apiKey,
               model: { id: resolvedModelId },
               local: { cwd: process.cwd() },
@@ -103,7 +114,7 @@ const CustomToolsPlugin: Plugin = async (input: PluginInput): Promise<Hooks> => 
             }
 
             if (result.status === "cancelled") {
-              log.error("cursor_prompt: run was cancelled", {
+              log.warn("cursor_prompt: run was cancelled", {
                 runId: result.id,
                 status: result.status,
               });
@@ -114,7 +125,7 @@ const CustomToolsPlugin: Plugin = async (input: PluginInput): Promise<Hooks> => 
               runId: result.id,
               status: result.status,
             });
-            throw new Error(`Cursor run finished with unexpected status (id=${result.id})`);
+            throw new Error(`Cursor run finished with unexpected status (id=${result.id}, status=${result.status})`);
           } catch (err) {
             if (err instanceof NetworkError) {
               log.error("cursor_prompt: NetworkError", {
@@ -131,6 +142,11 @@ const CustomToolsPlugin: Plugin = async (input: PluginInput): Promise<Hooks> => 
               throw err;
             }
             throw err;
+          } finally {
+            if (agent) {
+              await agent.close();
+              log.info("cursor_prompt: agent closed");
+            }
           }
         },
       },

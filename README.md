@@ -2,6 +2,8 @@
 
 OpenCode 用カスタムツールプラグイン。Cursor 公式 SDK (`@cursor/sdk`) 経由で Cursor エージェントへ任意のプロンプトを送信し、応答テキストを返す `cursor_prompt` ツールを 1 つ提供する。
 
+詳細な仕様については [SPEC.md](./SPEC.md) を参照してください。
+
 ## 提供ツール
 
 ### `cursor_prompt`

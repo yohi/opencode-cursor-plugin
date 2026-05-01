@@ -40,13 +40,14 @@ interface ToolDefinition {
   execute(args: Record<string, unknown>): Promise<unknown>;
 }
 
-interface FakeContext {
+// Nitpick: PluginInput から型を派生させる
+type FakeContext = PluginInput & {
   client: {
     app: {
-      log: FakeLog;
+      log: PluginInput["client"]["app"]["log"] & FakeLog;
     };
   };
-}
+};
 
 function makeContext(): { context: FakeContext; log: FakeLog } {
   const log: FakeLog = {
@@ -55,12 +56,24 @@ function makeContext(): { context: FakeContext; log: FakeLog } {
     warn: vi.fn(),
     error: vi.fn(),
   };
-  // CustomToolsPlugin が期待する v3 の PluginInput 構造 ({ client: { app: { log } } }) を作成します。
-  const context: FakeContext = {
+  // SDK の log メソッドは関数なので、モック関数としても動作するようにします
+  const logMethod = vi.fn() as any;
+  Object.assign(logMethod, log);
+
+  // CustomToolsPlugin が期待する v3 の PluginInput 構造を作成します。
+  const context = {
     client: {
-      app: { log },
+      app: { log: logMethod },
     },
-  };
+    // その他の必須プロパティをスタブとして追加
+    project: {} as any,
+    directory: "",
+    worktree: "",
+    experimental_workspace: {} as any,
+    serverUrl: new URL("http://localhost"),
+    $: {} as any,
+  } as unknown as FakeContext;
+
   return { context, log };
 }
 

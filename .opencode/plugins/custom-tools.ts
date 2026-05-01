@@ -1,4 +1,4 @@
-import { tool, type Plugin, type Hooks, type PluginInput } from "@opencode-ai/plugin";
+import { tool, type Plugin, type Hooks } from "@opencode-ai/plugin";
 import { config as loadDotenv } from "dotenv";
 import { z } from "zod";
 
@@ -26,8 +26,33 @@ const args = {
 
 type CursorPromptArgs = z.infer<z.ZodObject<typeof args>>;
 
+interface Logger {
+  info(message: string, extra?: Record<string, unknown>): void;
+  warn(message: string, extra?: Record<string, unknown>): void;
+  error(message: string, extra?: Record<string, unknown>): void;
+  debug(message: string, extra?: Record<string, unknown>): void;
+}
+
 const CustomToolsPlugin: Plugin = async ({ client }): Promise<Hooks> => {
-  const log = client.app.log;
+  const rawLog = client.app.log as any;
+  const log: Logger = {
+    info: (m, e) =>
+      typeof rawLog.info === "function"
+        ? rawLog.info(m, e)
+        : rawLog({ body: { service: "custom-tools", level: "info", message: m, extra: e as any } }),
+    warn: (m, e) =>
+      typeof rawLog.warn === "function"
+        ? rawLog.warn(m, e)
+        : rawLog({ body: { service: "custom-tools", level: "warn", message: m, extra: e as any } }),
+    error: (m, e) =>
+      typeof rawLog.error === "function"
+        ? rawLog.error(m, e)
+        : rawLog({ body: { service: "custom-tools", level: "error", message: m, extra: e as any } }),
+    debug: (m, e) =>
+      typeof rawLog.debug === "function"
+        ? rawLog.debug(m, e)
+        : rawLog({ body: { service: "custom-tools", level: "debug", message: m, extra: e as any } }),
+  };
 
   // loadDotenv をプラグイン実行時に呼び出す
   if (process.env.NODE_ENV !== "test") {

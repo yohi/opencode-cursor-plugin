@@ -150,6 +150,10 @@ const CustomToolsPlugin: Plugin = async ({ client }): Promise<Hooks> => {
               });
               throw err;
             }
+            log.error("cursor_prompt: unexpected error during tool execution", {
+              errorType: (err as any)?.constructor?.name || typeof err,
+              message: (err as any)?.message || String(err),
+            });
             throw err;
           } finally {
             if (agent) {

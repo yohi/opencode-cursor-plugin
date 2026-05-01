@@ -393,4 +393,21 @@ describe("cursor_prompt", () => {
     ]);
     expect(allLogCalls).not.toContain("sk-test-12345");
   });
+
+  it("T13: logs unexpected errors with type and message before re-throwing", async () => {
+    process.env.CURSOR_API_KEY = "sk-test-12345";
+    const unexpectedError = new TypeError("Unexpected type error");
+    await setupAgentMock({ createError: unexpectedError });
+
+    const { tool, log } = await loadTool();
+
+    await expect(tool.execute({ prompt: "hi" })).rejects.toThrow("Unexpected type error");
+    expect(log.error).toHaveBeenCalledWith(
+      "cursor_prompt: unexpected error during tool execution",
+      expect.objectContaining({
+        errorType: "TypeError",
+        message: "Unexpected type error",
+      }),
+    );
+  });
 });

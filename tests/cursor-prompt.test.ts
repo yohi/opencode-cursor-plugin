@@ -118,6 +118,7 @@ describe("cursor_prompt", () => {
     expect(t2CreateArg?.model).toEqual({ id: "composer-2" });
     expect(log.warn).toHaveBeenCalled();
     expect(send).toHaveBeenCalledWith("hi");
+    expect(close).toHaveBeenCalled();
   });
 
   it("T3: forwards explicit model to Agent.create as { id } and does not warn", async () => {
@@ -131,13 +132,14 @@ describe("cursor_prompt", () => {
 
     const { tool, log } = await loadTool();
 
-    const out = await tool.execute({ prompt: "hi", model: "composer-2" });
+    const out = await tool.execute({ prompt: "hi", model: "composer-explicit-1" });
 
     expect(out).toBe("ok2");
     expect(Agent.create).toHaveBeenCalledTimes(1);
     const t3CreateArg = (Agent.create as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
-    expect(t3CreateArg?.model).toEqual({ id: "composer-2" });
+    expect(t3CreateArg?.model).toEqual({ id: "composer-explicit-1" });
     expect(log.warn).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalled();
   });
 
   it("T4: re-throws RateLimitError from agent.send and logs error", async () => {
@@ -149,7 +151,7 @@ describe("cursor_prompt", () => {
 
     const { tool, log } = await loadTool();
 
-    await expect(tool.execute({ prompt: "x".repeat(1_000_000) })).rejects.toBeInstanceOf(RateLimitError);
+    await expect(tool.execute({ prompt: "hi" })).rejects.toBeInstanceOf(RateLimitError);
     expect(log.error).toHaveBeenCalled();
   });
 
@@ -168,14 +170,31 @@ describe("cursor_prompt", () => {
     expect(log.error).toHaveBeenCalled();
   });
 
-  it("T6: re-throws AuthenticationError from Agent.create", async () => {
+  it("T6: re-throws AuthenticationError from Agent.create and logs error", async () => {
     process.env.CURSOR_API_KEY = "sk-test-12345";
     const { Agent, AuthenticationError } = await import("@cursor/sdk");
     (Agent.create as ReturnType<typeof vi.fn>).mockRejectedValue(new AuthenticationError("invalid key"));
 
-    const { tool } = await loadTool();
+    const { tool, log } = await loadTool();
 
     await expect(tool.execute({ prompt: "hi" })).rejects.toBeInstanceOf(AuthenticationError);
+    expect(log.error).toHaveBeenCalled();
+  });
+
+  it("T6.1: preserves original RateLimitError when agent.close fails", async () => {
+    process.env.CURSOR_API_KEY = "sk-test-12345";
+    const { Agent, RateLimitError } = await import("@cursor/sdk");
+    const send = vi.fn().mockRejectedValue(new RateLimitError("rate limited"));
+    const close = vi.fn().mockRejectedValue(new Error("close failed"));
+    (Agent.create as ReturnType<typeof vi.fn>).mockResolvedValue({ send, close });
+
+    const { tool, log } = await loadTool();
+
+    await expect(tool.execute({ prompt: "hi" })).rejects.toBeInstanceOf(RateLimitError);
+    expect(log.error).toHaveBeenCalled();
+    expect(log.warn).toHaveBeenCalledWith("cursor_prompt: agent.close failed", {
+      message: "close failed",
+    });
   });
 
   it("T7: re-throws NetworkError and logs isRetryable", async () => {
@@ -205,7 +224,11 @@ describe("cursor_prompt", () => {
     const { tool, log } = await loadTool();
 
     await expect(tool.execute({ prompt: "hi" })).rejects.toThrow(/status=error/);
-    expect(log.error).toHaveBeenCalled();
+    expect(log.error).toHaveBeenCalledWith("cursor_prompt: run finished with status=error", expect.objectContaining({
+      runId: "run_err",
+      status: "error",
+    }));
+    expect(close).toHaveBeenCalled();
   });
 
   it("T9: throws and logs when run.status === 'cancelled'", async () => {
@@ -220,7 +243,30 @@ describe("cursor_prompt", () => {
     const { tool, log } = await loadTool();
 
     await expect(tool.execute({ prompt: "hi" })).rejects.toThrow(/cancelled/);
-    expect(log.error).toHaveBeenCalled();
+    expect(log.warn).toHaveBeenCalledWith("cursor_prompt: run was cancelled", expect.objectContaining({
+      runId: "run_cxl",
+      status: "cancelled",
+    }));
+    expect(close).toHaveBeenCalled();
+  });
+
+  it("T10: throws and logs when run.status is unexpected", async () => {
+    process.env.CURSOR_API_KEY = "sk-test-12345";
+    const { Agent } = await import("@cursor/sdk");
+    const send = vi.fn().mockResolvedValue({
+      wait: vi.fn().mockResolvedValue({ id: "run_unknown", status: "weird" }),
+    });
+    const close = vi.fn().mockResolvedValue(undefined);
+    (Agent.create as ReturnType<typeof vi.fn>).mockResolvedValue({ send, close });
+
+    const { tool, log } = await loadTool();
+
+    await expect(tool.execute({ prompt: "hi" })).rejects.toThrow(/unexpected status \(id=run_unknown, status=weird\)/);
+    expect(log.error).toHaveBeenCalledWith("cursor_prompt: unexpected run status", expect.objectContaining({
+      runId: "run_unknown",
+      status: "weird",
+    }));
+    expect(close).toHaveBeenCalled();
   });
 
   it("T10a: agent.close is called on success", async () => {

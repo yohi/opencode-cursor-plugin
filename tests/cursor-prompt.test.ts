@@ -156,7 +156,7 @@ describe("cursor_prompt", () => {
     await expect(tool.execute({ prompt: "hi" })).rejects.toThrow(/CURSOR_API_KEY/);
     expect(log.error).toHaveBeenCalledWith(
       "CURSOR_API_KEY is not set or blank; cursor_prompt cannot run",
-      expect.objectContaining({ apiKeyStatus: "blank", apiKeyLength: 3 }),
+      expect.objectContaining({ apiKeyStatus: "blank", apiKeyLength: 0 }),
     );
   });
 

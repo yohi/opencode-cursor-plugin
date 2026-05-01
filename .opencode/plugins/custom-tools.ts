@@ -65,11 +65,12 @@ const CustomToolsPlugin: Plugin = async ({ client }): Promise<Hooks> => {
         description: `Cursor エージェントへ任意のプロンプトを送信し、応答テキストを取得します。引数 prompt は必須、model はオプション（未指定時は DEFAULT_LOCAL_MODEL "${DEFAULT_LOCAL_MODEL}" を使用）。`,
         args: args,
         async execute(args: CursorPromptArgs) {
-          const apiKey = process.env.CURSOR_API_KEY;
-          if (apiKey == null || apiKey.trim() === "") {
+          const rawApiKey = process.env.CURSOR_API_KEY;
+          const trimmedApiKey = rawApiKey?.trim();
+          if (trimmedApiKey == null || trimmedApiKey === "") {
             log.error("CURSOR_API_KEY is not set or blank; cursor_prompt cannot run", {
-              apiKeyStatus: apiKey === undefined ? "undefined" : "blank",
-              apiKeyLength: apiKey?.length,
+              apiKeyStatus: rawApiKey === undefined ? "undefined" : "blank",
+              apiKeyLength: trimmedApiKey?.length,
             });
             throw new Error("CURSOR_API_KEY is not set in the environment");
           }
@@ -92,7 +93,7 @@ const CustomToolsPlugin: Plugin = async ({ client }): Promise<Hooks> => {
           let agent: Awaited<ReturnType<typeof Agent.create>> | undefined;
           try {
             agent = await Agent.create({
-              apiKey,
+              apiKey: trimmedApiKey,
               model: { id: resolvedModelId },
               local: { cwd: process.cwd() },
             });

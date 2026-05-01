@@ -9,7 +9,7 @@ OpenCode 用カスタムツールプラグイン。Cursor 公式 SDK (`@cursor/s
 | 引数 | 型 | 必須 | 説明 |
 |---|---|---|---|
 | `prompt` | string | ○ | Cursor エージェントへ送信するユーザープロンプト本文 |
-| `model` | string | × | Cursor 側で利用するモデル識別子（例: `composer-2`）。未指定時は SDK のデフォルトを使用 |
+| `model` | string | × | Cursor 側で利用するモデル識別子（例: `composer-2`）。未指定時は `composer-2` を使用 |
 
 戻り値: `Promise<string>`（Cursor エージェントの最終応答テキスト）。
 

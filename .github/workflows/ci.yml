@@ -10,6 +10,8 @@ jobs:
   ci:
     name: typecheck & test (devcontainer)
     runs-on: ubuntu-slim
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -19,6 +21,8 @@ jobs:
         with:
           imageName: opencode-cursor-plugin-ci
           push: never
+          env: |
+            CURSOR_API_KEY=${{ secrets.CURSOR_API_KEY }}
           runCmd: |
             set -euxo pipefail
             pnpm install --frozen-lockfile

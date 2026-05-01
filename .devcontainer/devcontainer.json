@@ -11,8 +11,7 @@
     "vscode": {
       "extensions": [
         "dbaeumer.vscode-eslint",
-        "esbenp.prettier-vscode",
-        "anysphere.cursorpyright"
+        "esbenp.prettier-vscode"
       ],
       "settings": {
         "editor.formatOnSave": true,

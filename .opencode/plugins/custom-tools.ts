@@ -78,14 +78,16 @@ const CustomToolsPlugin: Plugin = async (input: PluginInput): Promise<Hooks> => 
             modelId: resolvedModelId,
           });
 
-          const { Agent } = await import("@cursor/sdk");
-          const agent = await Agent.create({
-            apiKey,
-            model: { id: resolvedModelId },
-            local: { cwd: process.cwd() },
-          });
+          const sdk = await import("@cursor/sdk");
+          const { Agent, CursorAgentError, NetworkError } = sdk;
 
+          let agent: Awaited<ReturnType<typeof Agent.create>> | undefined;
           try {
+            agent = await Agent.create({
+              apiKey,
+              model: { id: resolvedModelId },
+              local: { cwd: process.cwd() },
+            });
             log.info("cursor_prompt: agent created");
 
             const run = await agent.send(args.prompt);
@@ -124,9 +126,31 @@ const CustomToolsPlugin: Plugin = async (input: PluginInput): Promise<Hooks> => 
               status: result.status,
             });
             throw new Error(`Cursor run finished with unexpected status (id=${result.id}, status=${result.status})`);
+          } catch (err) {
+            if (err instanceof NetworkError) {
+              log.error("cursor_prompt: NetworkError", {
+                message: err.message,
+                isRetryable: err.isRetryable,
+              });
+              throw err;
+            }
+            if (err instanceof CursorAgentError) {
+              log.error("cursor_prompt: CursorAgentError", {
+                kind: err.constructor.name,
+                message: err.message,
+              });
+              throw err;
+            }
+            throw err;
           } finally {
-            await agent.close();
-            log.info("cursor_prompt: agent closed");
+            if (agent) {
+              try {
+                await agent.close();
+                log.info("cursor_prompt: agent closed");
+              } catch (closeErr) {
+                log.warn("cursor_prompt: agent.close failed", closeErr);
+              }
+            }
           }
         },
       },

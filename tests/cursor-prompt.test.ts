@@ -142,6 +142,74 @@ describe("cursor_prompt", () => {
     expect(close).toHaveBeenCalled();
   });
 
+  it("T4: re-throws RateLimitError from agent.send and logs error", async () => {
+    process.env.CURSOR_API_KEY = "sk-test-12345";
+    const { Agent, RateLimitError } = await import("@cursor/sdk");
+    const send = vi.fn().mockRejectedValue(new RateLimitError("rate limited"));
+    const close = vi.fn().mockResolvedValue(undefined);
+    (Agent.create as ReturnType<typeof vi.fn>).mockResolvedValue({ send, close });
+
+    const { tool, log } = await loadTool();
+
+    await expect(tool.execute({ prompt: "hi" })).rejects.toBeInstanceOf(RateLimitError);
+    expect(log.error).toHaveBeenCalled();
+  });
+
+  it("T5: re-throws ConfigurationError from Agent.create for unknown model", async () => {
+    process.env.CURSOR_API_KEY = "sk-test-12345";
+    const { Agent, ConfigurationError } = await import("@cursor/sdk");
+    (Agent.create as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new ConfigurationError("unknown model"),
+    );
+
+    const { tool, log } = await loadTool();
+
+    await expect(tool.execute({ prompt: "hi", model: "no-such-model" })).rejects.toBeInstanceOf(
+      ConfigurationError,
+    );
+    expect(log.error).toHaveBeenCalled();
+  });
+
+  it("T6: re-throws AuthenticationError from Agent.create and logs error", async () => {
+    process.env.CURSOR_API_KEY = "sk-test-12345";
+    const { Agent, AuthenticationError } = await import("@cursor/sdk");
+    (Agent.create as ReturnType<typeof vi.fn>).mockRejectedValue(new AuthenticationError("invalid key"));
+
+    const { tool, log } = await loadTool();
+
+    await expect(tool.execute({ prompt: "hi" })).rejects.toBeInstanceOf(AuthenticationError);
+    expect(log.error).toHaveBeenCalled();
+  });
+
+  it("T6.1: preserves original RateLimitError when agent.close fails", async () => {
+    process.env.CURSOR_API_KEY = "sk-test-12345";
+    const { Agent, RateLimitError } = await import("@cursor/sdk");
+    const send = vi.fn().mockRejectedValue(new RateLimitError("rate limited"));
+    const close = vi.fn().mockRejectedValue(new Error("close failed"));
+    (Agent.create as ReturnType<typeof vi.fn>).mockResolvedValue({ send, close });
+
+    const { tool, log } = await loadTool();
+
+    await expect(tool.execute({ prompt: "hi" })).rejects.toBeInstanceOf(RateLimitError);
+    expect(log.error).toHaveBeenCalled();
+    expect(log.warn).toHaveBeenCalledWith("cursor_prompt: agent.close failed", expect.any(Error));
+  });
+
+  it("T7: re-throws NetworkError and logs isRetryable", async () => {
+    process.env.CURSOR_API_KEY = "sk-test-12345";
+    const { Agent, NetworkError } = await import("@cursor/sdk");
+    const send = vi.fn().mockRejectedValue(new NetworkError("network down", { isRetryable: true }));
+    const close = vi.fn().mockResolvedValue(undefined);
+    (Agent.create as ReturnType<typeof vi.fn>).mockResolvedValue({ send, close });
+
+    const { tool, log } = await loadTool();
+
+    await expect(tool.execute({ prompt: "hi" })).rejects.toBeInstanceOf(NetworkError);
+    const errorCalls = log.error.mock.calls.flat();
+    const stringified = JSON.stringify(errorCalls);
+    expect(stringified).toContain("isRetryable");
+  });
+
   it("T8: throws and logs when run.status === 'error'", async () => {
     process.env.CURSOR_API_KEY = "sk-test-12345";
     const { Agent } = await import("@cursor/sdk");

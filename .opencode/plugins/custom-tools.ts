@@ -81,7 +81,7 @@ const CustomToolsPlugin: Plugin = async (input: PluginInput): Promise<Hooks> => 
           const sdk = await import("@cursor/sdk");
           const { Agent, CursorAgentError, NetworkError } = sdk;
 
-          let agent;
+          let agent: Awaited<ReturnType<typeof Agent.create>> | undefined;
           try {
             agent = await Agent.create({
               apiKey,

@@ -1,14 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { z } from "zod";
+import { promptSchema, modelSchema } from "../.opencode/plugins/custom-tools";
 
-// custom-tools.ts からスキーマをエクスポートしていないため、
-// 同等のロジックをテストするか、リファクタリングしてエクスポート可能にする必要があります。
-// ここでは、現在の実装が期待通りに動作することを確認するために、同様のスキーマを定義してテストします。
-
-const promptSchema = z.string().trim().min(1);
-const modelSchema = z.string().trim().min(1).optional();
-
-describe("Zod Schema Validation", () => {
+describe("Zod Schema Validation (from Implementation)", () => {
   describe("prompt schema", () => {
     it("accepts valid strings", () => {
       expect(promptSchema.parse("hello")).toBe("hello");

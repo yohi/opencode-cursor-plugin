@@ -2,20 +2,24 @@ import type { Plugin, PluginInput, Hooks } from "@opencode-ai/plugin";
 import { config as loadDotenv } from "dotenv";
 import { z } from "zod";
 
+export const promptSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .describe("Cursor エージェントへ送信するユーザープロンプト本文");
+
+export const modelSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .optional()
+  .describe(
+    "Cursor 側で利用するモデル識別子（例: 'composer-2'）。未指定の場合は SDK のデフォルトを使用",
+  );
+
 const args = {
-  prompt: z
-    .string()
-    .trim()
-    .min(1)
-    .describe("Cursor エージェントへ送信するユーザープロンプト本文"),
-  model: z
-    .string()
-    .trim()
-    .min(1)
-    .optional()
-    .describe(
-      "Cursor 側で利用するモデル識別子（例: 'composer-2'）。未指定の場合は SDK のデフォルトを使用",
-    ),
+  prompt: promptSchema,
+  model: modelSchema,
 };
 
 type CursorPromptArgs = z.infer<z.ZodObject<typeof args>>;

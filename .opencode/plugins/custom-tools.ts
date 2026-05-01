@@ -67,7 +67,10 @@ const CustomToolsPlugin: Plugin = async ({ client }): Promise<Hooks> => {
         async execute(args: CursorPromptArgs) {
           const apiKey = process.env.CURSOR_API_KEY;
           if (apiKey == null || apiKey.trim() === "") {
-            log.error("CURSOR_API_KEY is not set or blank; cursor_prompt cannot run", { apiKey });
+            log.error("CURSOR_API_KEY is not set or blank; cursor_prompt cannot run", {
+              apiKeyStatus: apiKey === undefined ? "undefined" : "blank",
+              apiKeyLength: apiKey?.length,
+            });
             throw new Error("CURSOR_API_KEY is not set in the environment");
           }
 

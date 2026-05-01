@@ -1,66 +1,58 @@
+import type { Plugin, PluginInput, Hooks } from "@opencode-ai/plugin";
 import { config as loadDotenv } from "dotenv";
 import { z } from "zod";
 
-loadDotenv();
+export const promptSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .describe("Cursor エージェントへ送信するユーザープロンプト本文");
 
 const DEFAULT_LOCAL_MODEL = "composer-2";
 
-const argsSchema = z.object({
-  prompt: z
-    .string()
-    .min(1)
-    .describe("Cursor エージェントへ送信するユーザープロンプト本文"),
-  model: z
-    .string()
-    .min(1)
-    .optional()
-    .describe(
-      "Cursor 側で利用するモデル識別子（例: 'composer-2'）。未指定の場合は SDK のデフォルトを使用",
-    ),
-});
+export const modelSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .optional()
+  .describe(
+    "Cursor 側で利用するモデル識別子（例: 'composer-2'）。未指定の場合は SDK のデフォルトを使用",
+  );
 
-type Logger = {
-  debug: (...args: unknown[]) => void;
-  info: (...args: unknown[]) => void;
-  warn: (...args: unknown[]) => void;
-  error: (...args: unknown[]) => void;
+const args = {
+  prompt: promptSchema,
+  model: modelSchema,
 };
 
-type CursorPromptArgs = z.infer<typeof argsSchema>;
+type CursorPromptArgs = z.infer<z.ZodObject<typeof args>>;
 
-type CursorPromptTool = {
-  description: string;
-  args: typeof argsSchema;
-  execute: (args: CursorPromptArgs) => Promise<string>;
-};
-
-type PluginResult = {
-  tool: {
-    cursor_prompt: CursorPromptTool;
+interface ExtendedPluginInput extends PluginInput {
+  app?: {
+    log: {
+      error(message: string, data?: unknown): void;
+    };
   };
-};
-
-function defineTool(definition: CursorPromptTool): CursorPromptTool {
-  return definition;
 }
 
-const CustomToolsPlugin = async ({
-  client,
-}: {
-  client: { app: { log: Logger } };
-}): Promise<PluginResult> => {
-  const log = client.app.log;
+const CustomToolsPlugin: Plugin = async (input: PluginInput): Promise<Hooks> => {
+  const extendedInput = input as ExtendedPluginInput;
+  const log = extendedInput.app?.log;
+
+  // loadDotenv をプラグイン実行時に呼び出す
+  if (process.env.NODE_ENV !== "test") {
+    loadDotenv();
+  }
 
   return {
     tool: {
-      cursor_prompt: defineTool({
+      cursor_prompt: {
         description:
           "Cursor エージェントへ任意のプロンプトを送信し、応答テキストを取得します。引数 prompt は必須、model はオプション（未指定時は Cursor SDK のデフォルトモデルを使用）。",
-        args: argsSchema,
-        async execute(args) {
+        args: args,
+        async execute(args: CursorPromptArgs) {
           const apiKey = process.env.CURSOR_API_KEY;
-          if (!apiKey) {
-            log.error("CURSOR_API_KEY is not set; cursor_prompt cannot run");
+          if (apiKey == null || apiKey.trim() === "") {
+            log?.error("CURSOR_API_KEY is not set or blank; cursor_prompt cannot run", { apiKey });
             throw new Error("CURSOR_API_KEY is not set in the environment");
           }
 
@@ -152,9 +144,9 @@ const CustomToolsPlugin = async ({
             }
           }
         },
-      }),
+      },
     },
-  };
+  } as unknown as Hooks;
 };
 
 export default CustomToolsPlugin;

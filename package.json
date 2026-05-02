@@ -1,9 +1,18 @@
 {
-  "name": "opencode-cursor-plugin",
+  "name": "@yohi/opencode-cursor-plugin",
   "version": "0.1.0",
-  "private": true,
   "description": "OpenCode plugin that exposes the Cursor SDK as a custom tool",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
   "type": "module",
+  "main": ".opencode/plugins/custom-tools.ts",
+  "exports": {
+    ".": "./.opencode/plugins/custom-tools.ts"
+  },
+  "files": [
+    ".opencode/plugins"
+  ],
   "engines": {
     "node": ">=20.0.0",
     "pnpm": ">=9.12.0"

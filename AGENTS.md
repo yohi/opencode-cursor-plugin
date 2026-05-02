@@ -30,23 +30,26 @@ This is an OpenCode custom tool plugin that exposes the Cursor SDK (`@cursor/sdk
 
 ## Less is More
 
-Adhere to the "Less is More" principle: minimize complexity in agent design and documentation. Proactively remove redundant logic or documentation that does not directly contribute to the core functionality or clarity of the system. For related architectural constraints, see [SPEC.md](./SPEC.md).
+Adhere to the "Less is More" principle: minimize complexity in agent design and documentation. Proactively remove redundant logic or documentation. For related architectural constraints, see the Detailed Project Specifications ([SPEC.md](./SPEC.md)).
 
 ## Progressive Disclosure & Documentation
 
 For detailed context, please refer to the following documents before making architectural changes:
 
-- **Specifications (SPEC.md):** The Detailed Project Specifications (SPEC) document. Contains the complete architectural design, the 8-step execute flow, and the exhaustive list of 11 error-handling edge cases. Always consult this before modifying `.opencode/plugins/custom-tools.ts`. Except when making changes that do not affect execution flow or `.opencode/plugins/custom-tools.ts`, in which case consult as needed.
+- **Detailed Project Specifications ([SPEC.md](./SPEC.md)):** Contains the complete architectural design, the 8-step execute flow, and the list of 11 error-handling edge cases.
+    - Always consult this document before modifying `.opencode/plugins/custom-tools.ts`.
+    - Reference it for any changes that impact the core execution flow.
 - **User Guide (`README.md`):** Contains setup instructions and environment variable requirements (e.g., `CURSOR_API_KEY`).
 
 ## Key Architectural Guidelines
 
-- **Error Handling:** As a rule, the plugin must handle errors precisely when using the built-in agent SDK.
-    - Catch `CursorAgentError` and its derivatives (e.g., `NetworkError`, `RateLimitError`, `AuthenticationError`) individually in SDK contexts.
-    - Log these specific errors before re-throwing them to the OpenCode runtime.
-    - Handle generic (non-SDK) or alternative implementations separately with documented error-handling strategies.
-- **Resource Management:** In SDK-based usage, ensure `agent.close()` is invoked in a `try/finally` or equivalent cleanup mechanism to prevent resource leaks. This applies to both success and failure scenarios, unless a different lifecycle/cleanup strategy is documented for non-SDK implementations.
+- **Error Handling:** The plugin should handle errors precisely when using the built-in agent SDK.
+    - Catch `CursorAgentError` and its derivatives like `NetworkError`, `RateLimitError`, and `AuthenticationError` individually.
+    - Log these errors before re-throwing them to the OpenCode runtime.
+    - Use separate documented strategies for generic or alternative implementations.
+- **Resource Management:** In SDK-based usage, ensure `agent.close()` is invoked in a cleanup mechanism like `try/finally` to prevent resource leaks. This applies to both success and failure scenarios.
 - **Logging & Security:**
-    - **Avoid `console.log`.** Always use the custom `Logger` wrapper around `client.app.log` for production code. Temporary `console.log` usage is permitted only when the logging infrastructure is unavailable (e.g., during local development or when `Logger` cannot be initialized); such usage must be annotated with a TODO referencing `Logger` for follow-up and must never include sensitive values (e.g., `CURSOR_API_KEY`, prompt text, response text).
-    - **Prohibit writing sensitive data to logs.** This specifically includes `CURSOR_API_KEY`, prompt text, and response text.
-    - Only log safe metadata (e.g., string lengths, status codes, run IDs).
+    - **Logging Framework:** Always use the custom `Logger` wrapper around `client.app.log` for production code. Avoid using `console.log`.
+    - **Temporary Logging:** You may use `console.log` during local development if the primary logger is unavailable. Annotate these instances with a `TODO` for future replacement.
+    - **Data Security:** Never include sensitive values such as `CURSOR_API_KEY`, prompt text, or response text in any logs.
+    - **Safe Metadata:** Only log safe metadata like string lengths, status codes, or run IDs.

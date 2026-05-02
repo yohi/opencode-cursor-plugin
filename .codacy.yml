@@ -1,10 +1,25 @@
 ---
+exclude_paths:
+  # AGENTS.md は AI エージェント向けの特殊な記述形式を含むため、
+  # 一般的なドキュメントリンターによる誤検知を避けるために除外します。
+  - "AGENTS.md"
+  - "**/AGENTS.md"
 engines:
   biome:
     exclude_paths:
       - ".opencode/plugins/custom-tools.ts"
   eslint:
-    # 誤検知（Non-serializable expression）を回避するため、
-    # Qwik 関連のルールが誤って適用されている可能性があるエンジンから除外します。
     exclude_paths:
       - ".opencode/plugins/custom-tools.ts"
+  remark-lint:
+    exclude_paths:
+      - "AGENTS.md"
+      - "**/AGENTS.md"
+  markdownlint:
+    exclude_paths:
+      - "AGENTS.md"
+      - "**/AGENTS.md"
+  proselint:
+    exclude_paths:
+      - "AGENTS.md"
+      - "**/AGENTS.md"

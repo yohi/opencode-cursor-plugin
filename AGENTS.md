@@ -24,12 +24,15 @@ This is an OpenCode custom tool plugin that exposes the Cursor SDK (`@cursor/sdk
 
 For detailed context, please refer to the following documents before making architectural changes:
 
-- **Specifications (`SPEC.md`):** Contains the complete architectural design, the 8-step execute flow, and the exhaustive list of 11 error-handling edge cases. Always consult this before modifying `.opencode/plugins/custom-tools.ts`.
+- **Specifications (./SPEC.md):** Contains the complete architectural design, the 8-step execute flow, and the exhaustive list of 11 error-handling edge cases. Always consult this before modifying `.opencode/plugins/custom-tools.ts`.
 - **User Guide (`README.md`):** Contains setup instructions and environment variable requirements (e.g., `CURSOR_API_KEY`).
 
 ## Key Architectural Guidelines
 
-- **Error Handling:** The plugin acts as a thin wrapper. It must catch `CursorAgentError` separately. This includes `NetworkError` and other derived exceptions like `RateLimitError` or `AuthenticationError`. Log these errors appropriately before re-throwing them to the OpenCode runtime. Generic non-CursorAgentError errors must also be handled separately with logging.
+- **Error Handling:** The plugin acts as a thin wrapper and must handle errors precisely.
+    - Catch `CursorAgentError` and its derivatives (e.g., `NetworkError`, `RateLimitError`, `AuthenticationError`) individually.
+    - Log these specific errors before re-throwing them to the OpenCode runtime.
+    - Handle generic (non-SDK) errors separately with appropriate logging.
 - **Resource Management:** Ensure `agent.close()` is always called within a `try/finally` block to prevent resource leaks. This applies to both success and failure scenarios.
 - **Logging & Security:**
     - **Do not use `console.log`.** Instead, always use the custom `Logger` wrapper around `client.app.log`.

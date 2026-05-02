@@ -145,6 +145,12 @@ export function createStream(input: StreamProxyInput): {
   - `ToolCallStartedUpdate` → 警告 text-delta enqueue（§7.4 参照、`toolCallId` 単位で 1 回のみ）
   - `PartialToolCallUpdate` / `ToolCallCompletedUpdate` → ドロップ
   - `TurnEndedUpdate` → finish パート enqueue + `controller.close()`
+- **リトライ境界の状態追跡**: 内部に `hasEmittedDelta: boolean` を保持し、最初の `controller.enqueue` 直前に `true` へ遷移。例外捕捉時は `errors.classifyError(err, { phase })` を呼び出す。`phase` の決定:
+  - `agent.send` 呼出前 / 例外発生時点で `hasEmittedDelta=false` かつ `run.wait()` 未開始 → `"pre-stream"`
+  - `hasEmittedDelta=true` → `"in-stream"`
+  - `run.wait()` 解決中／解決後 → `"post-stream"`
+  - （`"create"` は `provider.ts` 側で `Agent.create` を直接呼ぶ箇所が判定する）
+- `classifyError` が `retry: true` を返した場合のみ §7.1 のリトライ処理へ進む。それ以外は即 re-throw → §7.2 の error ステータス相当として `controller.close()` で閉じる
 
 ### 5.4 `provider.ts`
 
@@ -179,15 +185,30 @@ export const cursorAuthHook: AuthHook;
 ### 5.7 `errors.ts`
 
 ```ts
+export type RetryPhase = "create" | "pre-stream" | "in-stream" | "post-stream";
+
 export interface RetryDecision {
   retry: boolean;
   delayMs: number;
   reason: string;
 }
 
-export function classifyError(err: unknown): RetryDecision;
+// phase に応じてリトライ可否を判定（NetworkError は in-stream / post-stream で
+// retry: false を返し、ストリーム重複を防ぐ）
+export function classifyError(
+  err: unknown,
+  ctx: { phase: RetryPhase },
+): RetryDecision;
+
 export function logError(log: Logger, err: unknown, context: Record<string, unknown>): void;
 ```
+
+`RetryPhase` のセマンティクス:
+
+- `create`: `Agent.create` 呼出中（stream 未生成 → リトライ安全）
+- `pre-stream`: `agent.send` 呼出後・`onDelta` 未発火（stream は生成されたが未配送 → リトライ安全）
+- `in-stream`: `onDelta` が 1 回以上発火済み（リトライ不可、重複の原因）
+- `post-stream`: `run.wait()` 解決中もしくは解決後（リトライ不可、結果は確定済み）
 
 ## 6. データフロー
 
@@ -248,7 +269,7 @@ export function logError(log: Logger, err: unknown, context: Record<string, unkn
 | `AuthenticationError` | `Agent.create` / `agent.send` | プールから除去 → re-throw。`models()` 内で発火した場合は静的フォールバックへ退避 | `error` |
 | `ConfigurationError` | `Agent.create` / `agent.send` | re-throw | `error` |
 | `RateLimitError` | `agent.send` | re-throw（リトライなし）。`retryAfterMs` があればログに記録 | `error` |
-| `NetworkError` | 任意 | `isRetryable=true` の場合のみ 1 回だけ 500ms バックオフでリトライ。失敗時 re-throw | `warn`（リトライ）/ `error`（最終） |
+| `NetworkError` | `Agent.create` 中、または `agent.send` 呼出直後で **onDelta 未発火** の段階に限り、`isRetryable=true` の場合 1 回だけ 500ms バックオフでリトライ。**onDelta が 1 回でも発火した後、または `run.wait()` 解決中の発生時は re-throw**（`agent.send` は one-shot で resume 不可のため、リトライすると先行 enqueue 済みチャンクとリトライ側のチャンクが重複しストリームが破損する）。失敗時 re-throw | `warn`（リトライ）/ `error`（最終 / リトライ不可で再スロー） |
 | `IntegrationNotConnectedError` | 任意 | re-throw | `error` |
 | `UnknownAgentError`（プール agent が消失） | `agent.send` | プールから除去 → 即時新規 `Agent.create` で 1 回再試行。**再試行成功後は §6.2 ステップ 6 と同等に `pool.put(nextHash, ...)` を実行**してプール最適化の連続性を維持 | `warn` |
 | `CursorSdkError` その他派生 | 任意 | re-throw | `error` |
@@ -287,7 +308,7 @@ export function logError(log: Logger, err: unknown, context: Record<string, unkn
 
 警告メッセージ本文:
 
-```
+```text
 ⚠️ [cursor-provider] Cursor agent attempted to use tool: <toolName>. Pure LLM mode is in effect; the tool call is surfaced for visibility but not executed by OpenCode.
 ```
 
@@ -325,8 +346,8 @@ export function logError(log: Logger, err: unknown, context: Record<string, unkn
 |---|---|
 | `tests/translator.test.ts` | 空履歴／履歴あり／連続 user message のハッシュ安定性、`prefixHash` と `nextHash` の分離、履歴分岐でハッシュ不一致、整形フォーマット、空 prompt や非対応ロールの拒否 |
 | `tests/agent-pool.test.ts` | LRU 退避、`lastUsedAt` 更新、`rekey`、close 失敗時の warn、5s タイムアウト（fake timers）、apiKey 違いで別エントリ、キャンセル経路での暫定 `put(prefixHash)` 後に同 prefixHash で再取得可能 |
-| `tests/stream-proxy.test.ts` | TextDelta → text-delta、Thinking → reasoning-delta、ToolCallStarted → 警告挿入 + warn（同 `toolCallId` で 1 回のみ）、`PartialToolCallUpdate` / `ToolCallCompletedUpdate` がドロップされ text-delta に流出しない、TurnEnded → finish、AbortSignal でクローズ、`run.status=error` で error パート enqueue + `controller.close()`（`controller.error` を呼ばない）、未知イベントが debug ログのみ |
-| `tests/errors.test.ts` | 各 Cursor 例外型のマッピング、NetworkError リトライ 1 回上限、UnknownAgentError でプール除去 + リトライ後 `pool.put(nextHash)` 実行 |
+| `tests/stream-proxy.test.ts` | TextDelta → text-delta、Thinking → reasoning-delta、ToolCallStarted → 警告挿入 + warn（同 `toolCallId` で 1 回のみ）、`PartialToolCallUpdate` / `ToolCallCompletedUpdate` がドロップされ text-delta に流出しない、TurnEnded → finish、AbortSignal でクローズ、`run.status=error` で error パート enqueue + `controller.close()`（`controller.error` を呼ばない）、未知イベントが debug ログのみ、**1 chunk 配送後 (`hasEmittedDelta=true`) の NetworkError でリトライが発火せず error パートが流れる（重複防止）**、`hasEmittedDelta=false` 時の NetworkError ではリトライが 1 回発火してから配送が継続する |
+| `tests/errors.test.ts` | 各 Cursor 例外型のマッピング、`classifyError` の phase 別判定（NetworkError × `create` / `pre-stream` で `retry: true`、`in-stream` / `post-stream` で `retry: false`）、NetworkError リトライ 1 回上限、UnknownAgentError でプール除去 + リトライ後 `pool.put(nextHash)` 実行 |
 | `tests/auth.test.ts` | `ctx.auth` 優先、env フォールバック、両方欠落時の `undefined` |
 | `tests/provider.test.ts` | `Cursor.models.list` 成功時の ModelV2 生成、失敗時の静的フォールバック、5s タイムアウト |
 | `tests/models.test.ts` | 静的フォールバックリストのスキーマ検証 |

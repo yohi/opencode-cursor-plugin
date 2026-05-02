@@ -32,7 +32,7 @@ This is an OpenCode custom tool plugin that exposes the Cursor SDK (`@cursor/sdk
 
 For detailed context, please refer to the following documents before making architectural changes:
 
-- **Specifications (./SPEC.md):** Contains the complete architectural design, the 8-step execute flow, and the exhaustive list of 11 error-handling edge cases. Always consult this before modifying `.opencode/plugins/custom-tools.ts`.
+- **Specifications (SPEC.md):** The Detailed Project Specifications (SPEC) document. Contains the complete architectural design, the 8-step execute flow, and the exhaustive list of 11 error-handling edge cases. Always consult this before modifying `.opencode/plugins/custom-tools.ts`.
 - **User Guide (`README.md`):** Contains setup instructions and environment variable requirements (e.g., `CURSOR_API_KEY`).
 
 ## Key Architectural Guidelines
@@ -41,8 +41,8 @@ For detailed context, please refer to the following documents before making arch
     - Catch `CursorAgentError` and its derivatives (e.g., `NetworkError`, `RateLimitError`, `AuthenticationError`) individually.
     - Log these specific errors before re-throwing them to the OpenCode runtime.
     - Handle generic (non-SDK) errors separately with appropriate logging.
-- **Resource Management:** Ensure `agent.close()` is always called within a `try/finally` block to prevent resource leaks. This applies to both success and failure scenarios.
+- **Resource Management:** Ensure `agent.close()` is always called within a `try/finally` block to prevent resource leaks. This is a mandatory requirement for both success and failure scenarios, unless the runtime environment prevents clean shutdown.
 - **Logging & Security:**
-    - **Do not use `console.log`.** Instead, always use the custom `Logger` wrapper around `client.app.log`.
+    - **Avoid `console.log`.** Always use the custom `Logger` wrapper around `client.app.log` for production code. Direct `console.log` is permitted only for temporary local debugging and must be removed before commit.
     - **Prohibit writing sensitive data to logs.** This specifically includes `CURSOR_API_KEY`, prompt text, and response text.
     - Only log safe metadata (e.g., string lengths, status codes, run IDs).

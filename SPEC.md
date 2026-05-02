@@ -21,10 +21,14 @@ OpenCode のプラグインアーキテクチャに準拠し、Cursor 公式 SDK
 [execute(args)]
    ├─ validate process.env.CURSOR_API_KEY (missing → log.error + throw)
    ├─ resolve model: args.model ?? DEFAULT_LOCAL_MODEL ("composer-2")
-   ├─ Agent.create({ apiKey, model: { id }, local: { cwd } })
-   ├─ agent.send(args.prompt)               // → Run
-   ├─ run.wait()                            // → RunResult
-   └─ result.status === "finished" ? result.result : throw
+   │
+   ├─ // try {
+   │    ├─ Agent.create({ apiKey, model: { id }, local: { cwd } })
+   │    ├─ agent.send(args.prompt)               // → Run
+   │    ├─ run.wait()                            // → RunResult
+   │    └─ result.status === "finished" ? result.result : throw
+   │
+   └─ // } finally { agent.close() }
 ```
 
 ## 3. 採用アプローチと判断根拠

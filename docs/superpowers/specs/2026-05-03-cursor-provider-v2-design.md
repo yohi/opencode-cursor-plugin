@@ -89,17 +89,30 @@ OpenCode の `cursor_prompt` カスタムツールを廃止し、`@opencode-ai/p
 type OpenCodePrompt = LanguageModelV2Prompt;  // [{role, content}, ...]
 
 interface TranslatedRequest {
-  prefixHash: string;          // 「最新ユーザー発言を除く履歴」の SHA-256
-  latestUserMessage: string;   // プールヒット時の差分送信用
-  fullPromptOnMiss: string;    // プールミス時の整形済み初回プロンプト
-  nextHash: string;            // ターン完了後の新プールキー（最新を含む全履歴のハッシュ）
+  // hashMessages(filter(messages \ latestUserMessage)) — assistant/tool は除外
+  prefixHash: string;
+  // プールヒット時の差分送信用
+  latestUserMessage: string;
+  // プールミス時の整形済み初回プロンプト（assistant 応答も含めて全体を整形）
+  fullPromptOnMiss: string;
+  // hashMessages(filter(messages)) — ターン完了後の新プールキー
+  nextHash: string;
 }
 
 export function translate(prompt: OpenCodePrompt): TranslatedRequest;
 ```
 
-- ハッシュは Node 標準 `crypto` の SHA-256。`role` と `content` をシリアライズ後にハッシュ化
-- 整形は `<system>...</system>\n<user>...</user>\n<assistant>...</assistant>\n<user>最新</user>` 形式
+- ハッシュは Node 標準 `crypto` の SHA-256
+- **ハッシュ対象は `role="system"` と `role="user"` のみ**（`assistant` / `tool` 等は除外）
+  - 理由: OpenCode は `LanguageModelV2` 規約に従い毎ターン全履歴（assistant 応答含む）を渡すが、Cursor SDK の `Agent` は内部で会話状態を保持するため、プール再利用判定に assistant 応答を含めると「ターン 1 の `nextHash`」と「ターン 2 の `prefixHash`」が必ず不一致となり、プール最適化（質問 5・6）が機能不全に陥る。`system + user` 列のみをハッシュ対象とすることで「同じ会話の続きか」の判定が成立する
+  - 副作用として、assistant 応答だけが異なる分岐（同じ user 入力で再生成）はプールヒットしてしまう。本設計ではこれを許容する（再生成意図ならユーザがチャット履歴を編集するなど明示的な変化が伴うため、user 列の差分で結局ミスになる想定）
+- `latestUserMessage` は messages 配列末尾の `role="user"` メッセージから抽出。末尾が `user` でない場合（assistant 連鎖等）は `ConfigurationError` 相当の例外を投げる
+- 整形（`fullPromptOnMiss`）は `<system>...</system>\n<user>...</user>\n<assistant>...</assistant>\n<user>最新</user>` 形式（assistant 応答も含めて Cursor へ初回コンテキストとして渡す）
+
+> 想定動作チェーン:
+> - ターン 1: messages = `[system, U1]` → `nextHash_1 = hash([system, U1])` → `pool.put(nextHash_1, agent)`
+> - ターン 2: messages = `[system, U1, R1, U2]` → `prefixHash_2 = hash(filter([system, U1, R1])) = hash([system, U1]) = nextHash_1` ✓ ヒット
+> - ターン 2 完了: `nextHash_2 = hash([system, U1, U2])` → `pool.rekey(prefixHash_2, nextHash_2)`
 
 ### 5.2 `agent-pool.ts`
 
@@ -138,19 +151,34 @@ export function createStream(input: StreamProxyInput): {
 ```
 
 - 内部で `agent.send(msg, { onDelta, onStep })` を呼び、`onDelta` で `controller.enqueue`
-- `TurnEndedUpdate` または `run.wait()` の解決で `controller.close()`
+- **終端ガード**: 内部状態 `hasClosedStream: boolean` を保持。終端処理は以下のヘルパに統一する:
+  ```ts
+  function safeEnqueue(part: LanguageModelV2StreamPart): void {
+    if (hasClosedStream) {
+      log.debug("stream-proxy: enqueue after close ignored", { partType: part.type });
+      return;
+    }
+    controller.enqueue(part);
+  }
+  function safeClose(): void {
+    if (hasClosedStream) return;
+    hasClosedStream = true;
+    controller.close();
+  }
+  ```
+- 一次終端は `TurnEndedUpdate`、二次終端は `run.wait()` 解決時の `RunResult.status` 分岐（§7.2 参照）。`hasClosedStream` ガードによりどちらが先に走っても安全
 - イベント分岐（網羅的 switch、未知の型は `log.debug` で記録のみ・enqueue しない）:
-  - `TextDeltaUpdate` → text-delta enqueue
-  - `ThinkingDeltaUpdate` → reasoning-delta enqueue
-  - `ToolCallStartedUpdate` → 警告 text-delta enqueue（§7.4 参照、`toolCallId` 単位で 1 回のみ）
+  - `TextDeltaUpdate` → text-delta `safeEnqueue`
+  - `ThinkingDeltaUpdate` → reasoning-delta `safeEnqueue`
+  - `ToolCallStartedUpdate` → 警告 text-delta `safeEnqueue`（§7.4 参照、`toolCallId` 単位で 1 回のみ）
   - `PartialToolCallUpdate` / `ToolCallCompletedUpdate` → ドロップ
-  - `TurnEndedUpdate` → finish パート enqueue + `controller.close()`
+  - `TurnEndedUpdate` → finish パート `safeEnqueue` → `safeClose()`
 - **リトライ境界の状態追跡**: 内部に `hasEmittedDelta: boolean` を保持し、最初の `controller.enqueue` 直前に `true` へ遷移。例外捕捉時は `errors.classifyError(err, { phase })` を呼び出す。`phase` の決定:
   - `agent.send` 呼出前 / 例外発生時点で `hasEmittedDelta=false` かつ `run.wait()` 未開始 → `"pre-stream"`
   - `hasEmittedDelta=true` → `"in-stream"`
   - `run.wait()` 解決中／解決後 → `"post-stream"`
   - （`"create"` は `provider.ts` 側で `Agent.create` を直接呼ぶ箇所が判定する）
-- `classifyError` が `retry: true` を返した場合のみ §7.1 のリトライ処理へ進む。それ以外は即 re-throw → §7.2 の error ステータス相当として `controller.close()` で閉じる
+- `classifyError` が `retry: true` を返した場合のみ §7.1 のリトライ処理へ進む。それ以外は即 re-throw → §7.2 の error ステータス相当として `safeEnqueue(error part)` → `safeClose()`
 
 ### 5.4 `provider.ts`
 
@@ -277,12 +305,14 @@ export function logError(log: Logger, err: unknown, context: Record<string, unkn
 
 ### 7.2 実行ステータス系（`run.wait()` 後）
 
+> **終端責務の整理**: 正常完了経路では `onDelta(TurnEndedUpdate)` が先行して `safeClose()` を呼ぶため、本表の `finished` 行はガードに弾かれて no-op となる（`hasClosedStream=true` で early return、§5.3 参照）。本表は主に `error` / `cancelled` / その他のステータスで `TurnEndedUpdate` が発火しないケースの動作を規定する。すべての enqueue / close 操作は `safeEnqueue` / `safeClose` ヘルパ経由で行い、二重終端による `TypeError` を物理的に防ぐ。
+
 | ステータス | 動作 |
 |---|---|
-| `finished` | stream に `finish` パート enqueue → `controller.close()` |
-| `error` | error メタ情報をログ（メッセージ本文は length のみ）→ stream に `error` パート enqueue → `controller.close()`（**`controller.error()` は呼ばない**: WHATWG Streams の `ResetQueue` で直前 enqueue が破棄されエラー情報が失われるため、`error` パートをデータとして配送し切る方式を採用） |
-| `cancelled` | `warn` ログ → stream に `finish(reason="abort")` enqueue → `controller.close()` |
-| その他 | `error` ログ → stream に `error` パート enqueue → `controller.close()`（`error` 行と同方針） |
+| `finished` | 通常はガードで no-op（`TurnEndedUpdate` が先行終端済み）。万一 `TurnEndedUpdate` が来ずに `finished` で解決した場合のみ、`finish` パート `safeEnqueue` → `safeClose()` |
+| `error` | error メタ情報をログ（メッセージ本文は length のみ）→ `error` パート `safeEnqueue` → `safeClose()`（**`controller.error()` は呼ばない**: WHATWG Streams の `ResetQueue` で直前 enqueue が破棄されエラー情報が失われるため、`error` パートをデータとして配送し切る方式を採用） |
+| `cancelled` | `warn` ログ → `finish(reason="abort")` パート `safeEnqueue` → `safeClose()` |
+| その他 | `error` ログ → `error` パート `safeEnqueue` → `safeClose()`（`error` 行と同方針） |
 
 ### 7.3 キャンセレーション
 
@@ -344,9 +374,9 @@ export function logError(log: Logger, err: unknown, context: Record<string, unkn
 
 | ファイル | 主要観点 |
 |---|---|
-| `tests/translator.test.ts` | 空履歴／履歴あり／連続 user message のハッシュ安定性、`prefixHash` と `nextHash` の分離、履歴分岐でハッシュ不一致、整形フォーマット、空 prompt や非対応ロールの拒否 |
+| `tests/translator.test.ts` | 空履歴／履歴あり／連続 user message のハッシュ安定性、`prefixHash` と `nextHash` の分離、履歴分岐でハッシュ不一致、整形フォーマット、空 prompt や非対応ロールの拒否、**assistant メッセージを含む履歴で連続 2 ターンが同一プールキーで結ばれる（`turn1.nextHash === turn2.prefixHash`）**、**assistant 応答内容が変わっても user 列が同じならハッシュは変わらない（assistant 列がフィルタされている確認）**、末尾が user でない messages 配列を拒否 |
 | `tests/agent-pool.test.ts` | LRU 退避、`lastUsedAt` 更新、`rekey`、close 失敗時の warn、5s タイムアウト（fake timers）、apiKey 違いで別エントリ、キャンセル経路での暫定 `put(prefixHash)` 後に同 prefixHash で再取得可能 |
-| `tests/stream-proxy.test.ts` | TextDelta → text-delta、Thinking → reasoning-delta、ToolCallStarted → 警告挿入 + warn（同 `toolCallId` で 1 回のみ）、`PartialToolCallUpdate` / `ToolCallCompletedUpdate` がドロップされ text-delta に流出しない、TurnEnded → finish、AbortSignal でクローズ、`run.status=error` で error パート enqueue + `controller.close()`（`controller.error` を呼ばない）、未知イベントが debug ログのみ、**1 chunk 配送後 (`hasEmittedDelta=true`) の NetworkError でリトライが発火せず error パートが流れる（重複防止）**、`hasEmittedDelta=false` 時の NetworkError ではリトライが 1 回発火してから配送が継続する |
+| `tests/stream-proxy.test.ts` | TextDelta → text-delta、Thinking → reasoning-delta、ToolCallStarted → 警告挿入 + warn（同 `toolCallId` で 1 回のみ）、`PartialToolCallUpdate` / `ToolCallCompletedUpdate` がドロップされ text-delta に流出しない、TurnEnded → finish、AbortSignal でクローズ、`run.status=error` で error パート enqueue + `controller.close()`（`controller.error` を呼ばない）、未知イベントが debug ログのみ、**1 chunk 配送後 (`hasEmittedDelta=true`) の NetworkError でリトライが発火せず error パートが流れる（重複防止）**、`hasEmittedDelta=false` 時の NetworkError ではリトライが 1 回発火してから配送が継続する、**`TurnEndedUpdate` 後に `run.wait()` が `finished` で解決しても `controller.enqueue` / `close` が二度呼ばれない（`hasClosedStream` ガード動作）**、**`safeEnqueue` が close 後の呼出を debug ログのみで握り潰す** |
 | `tests/errors.test.ts` | 各 Cursor 例外型のマッピング、`classifyError` の phase 別判定（NetworkError × `create` / `pre-stream` で `retry: true`、`in-stream` / `post-stream` で `retry: false`）、NetworkError リトライ 1 回上限、UnknownAgentError でプール除去 + リトライ後 `pool.put(nextHash)` 実行 |
 | `tests/auth.test.ts` | `ctx.auth` 優先、env フォールバック、両方欠落時の `undefined` |
 | `tests/provider.test.ts` | `Cursor.models.list` 成功時の ModelV2 生成、失敗時の静的フォールバック、5s タイムアウト |

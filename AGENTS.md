@@ -29,7 +29,7 @@ For detailed context, please refer to the following documents before making arch
 
 ## Key Architectural Guidelines
 
-- **Error Handling:** The plugin acts as a thin-wrapper. It must catch `NetworkError` and `CursorAgentError-derived` exceptions (e.g., `RateLimitError`, `AuthenticationError`) separately, log them appropriately, and re-throw them to the OpenCode runtime.
+- **Error Handling:** The plugin acts as a thin wrapper. It must catch `CursorAgentError` (including `NetworkError` and other `CursorAgentError-derived` exceptions such as `RateLimitError` and `AuthenticationError`) separately, log them appropriately, and re-throw them to the OpenCode runtime. Additionally, other non-CursorAgentError errors (e.g., generic exceptions) must be handled separately with appropriate logging before re-throwing.
 - **Resource Management:** Always ensure `agent.close()` is called within a `try/finally` block to prevent resource leaks, regardless of success or failure.
 - **Logging & Security:**
     - **NEVER use `console.log`.**

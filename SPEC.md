@@ -68,11 +68,10 @@ OpenCode のプラグインアーキテクチャに準拠し、Cursor 公式 SDK
 2. **モデル解決**: 引数 `model` の指定がない場合、`"composer-2"` をデフォルトとして採用し `log.warn` で記録。
 3. **エージェント生成**: `Agent.create`（APIキー、対象モデル、ローカルディレクトリ指定）を呼び出す。
 4. **プロンプト送信と待機**: `agent.send` 後、`run.wait()` で `RunResult` 完了を待つ。
-5. **例外処理**:
-   - `NetworkError`, `CursorAgentError` および予期せぬ例外の補足と `log.error` の後、再スロー。
-   - `RunResult.status` が `"error"` や `"cancelled"` の場合は内容をログに書き出してエラー送出。
-6. **リソース解放**: `try/finally` 句の中で必ず `agent.close()` を呼ぶ。
-7. **完了**: `status === "finished"` の場合、エージェントからの応答テキストを返却。
+5. **例外処理**: SDK 呼び出し中の `NetworkError`, `CursorAgentError` および予期せぬ例外を `catch` ブロックで補足し、`log.error` の後、再スロー。
+6. **実行ステータスの検証**: `run.wait()` 完了後、`RunResult.status` が `"error"` や `"cancelled"` の場合は内容をログに書き出してエラー送出。
+7. **リソース解放**: `try/finally` 句の中で必ず `agent.close()` を呼ぶ。
+8. **完了**: `status === "finished"` の場合、エージェントからの応答テキストを返却。
 
 ## 6. エラーハンドリングとエッジケース
 

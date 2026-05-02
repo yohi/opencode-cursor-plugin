@@ -10,7 +10,7 @@ To ensure system integrity and security, you must adhere to the following constr
 - **Do not modify core infrastructure:** Unless explicitly requested, avoid changing the Devcontainer configuration or GitHub Workflows.
 - **Scope limitation:** Only make changes related to the current task. Do not perform unrelated "cleanups".
 
-# opencode-cursor-plugin
+## Project Overview
 
 This is an OpenCode custom tool plugin that exposes the Cursor SDK (`@cursor/sdk`) as a single `cursor_prompt` tool. It allows OpenCode agents to send prompts to a local Cursor agent and retrieve the text response.
 

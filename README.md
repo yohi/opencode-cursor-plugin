@@ -74,10 +74,10 @@ pnpm test
 本プラグインは GitHub Packages に `@yohi/opencode-cursor-plugin` として公開されています。
 
 1. **`.npmrc` の設定**
-   プロジェクトの `.npmrc`（またはグローバルの `~/.npmrc`）に GitHub Packages の認証情報を追加します。
+   プロジェクトの `.npmrc`（またはグローバルの `~/.npmrc`）に GitHub Packages の認証情報を追加します。（※トークンをソースコード上に直接記述してコミットしないよう、環境変数を利用してください）
    ```ini
    @yohi:registry=https://npm.pkg.github.com
-   //npm.pkg.github.com/:_authToken=YOUR_GITHUB_TOKEN
+   //npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
    ```
 
 2. **OpenCode へのプラグイン追加**

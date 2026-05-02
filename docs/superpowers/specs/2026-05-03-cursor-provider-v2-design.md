@@ -297,7 +297,7 @@ export function logError(log: Logger, err: unknown, context: Record<string, unkn
 | `AuthenticationError` | `Agent.create` / `agent.send` | プールから除去 → re-throw。`models()` 内で発火した場合は静的フォールバックへ退避 | `error` |
 | `ConfigurationError` | `Agent.create` / `agent.send` | re-throw | `error` |
 | `RateLimitError` | `agent.send` | re-throw（リトライなし）。`retryAfterMs` があればログに記録 | `error` |
-| `NetworkError` | `Agent.create` 中、または `agent.send` 呼出直後で **onDelta 未発火** の段階に限り、`isRetryable=true` の場合 1 回だけ 500ms バックオフでリトライ。**onDelta が 1 回でも発火した後、または `run.wait()` 解決中の発生時は re-throw**（`agent.send` は one-shot で resume 不可のため、リトライすると先行 enqueue 済みチャンクとリトライ側のチャンクが重複しストリームが破損する）。失敗時 re-throw | `warn`（リトライ）/ `error`（最終 / リトライ不可で再スロー） |
+| `NetworkError` | `Agent.create` 中、または `agent.send` 呼出直後で **onDelta 未発火** の段階に限り | `isRetryable=true` の場合 1 回だけ 500ms バックオフでリトライ。onDelta 発火後または `run.wait()` 解決中は re-throw（`agent.send` は one-shot で resume 不可のため、リトライすると先行 enqueue 済みチャンクとリトライ側のチャンクが重複しストリームが破損する）。失敗時 re-throw | `warn`（リトライ）/ `error`（最終 / リトライ不可で再スロー） |
 | `IntegrationNotConnectedError` | 任意 | re-throw | `error` |
 | `UnknownAgentError`（プール agent が消失） | `agent.send` | プールから除去 → 即時新規 `Agent.create` で 1 回再試行。**再試行成功後は §6.2 ステップ 6 と同等に `pool.put(nextHash, ...)` を実行**してプール最適化の連続性を維持 | `warn` |
 | `CursorSdkError` その他派生 | 任意 | re-throw | `error` |

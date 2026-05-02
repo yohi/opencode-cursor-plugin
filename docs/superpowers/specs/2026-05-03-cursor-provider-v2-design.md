@@ -139,6 +139,12 @@ export function createStream(input: StreamProxyInput): {
 
 - 内部で `agent.send(msg, { onDelta, onStep })` を呼び、`onDelta` で `controller.enqueue`
 - `TurnEndedUpdate` または `run.wait()` の解決で `controller.close()`
+- イベント分岐（網羅的 switch、未知の型は `log.debug` で記録のみ・enqueue しない）:
+  - `TextDeltaUpdate` → text-delta enqueue
+  - `ThinkingDeltaUpdate` → reasoning-delta enqueue
+  - `ToolCallStartedUpdate` → 警告 text-delta enqueue（§7.4 参照、`toolCallId` 単位で 1 回のみ）
+  - `PartialToolCallUpdate` / `ToolCallCompletedUpdate` → ドロップ
+  - `TurnEndedUpdate` → finish パート enqueue + `controller.close()`
 
 ### 5.4 `provider.ts`
 
@@ -206,8 +212,12 @@ export function logError(log: Logger, err: unknown, context: Record<string, unkn
 3. agent-pool.tryGet(prefixHash) → undefined
 4. Agent.create({ apiKey, model: { id }, local: { cwd } })
 5. stream-proxy.createStream({ agent, message: fullPromptOnMiss })
-6. ストリーム完了後 agent-pool.put(nextHash, { agent, ... })
-   → LRU 容量超過時は最古を close（5s timeout）
+6-a. (正常完了) agent-pool.put(nextHash, { agent, ... })
+       → LRU 容量超過時は最古を close（5s timeout）
+6-b. (キャンセル) agent-pool.put(prefixHash, { agent, ... })  // §7.3 参照
+       → 暫定登録。次ターン再開で同 prefixHash ヒットを狙う
+6-c. (例外) §7.1 のマッピングに従い処理
+       UnknownAgentError でリトライした場合は §6.2 の 4〜6-a 経路を再実行
 ```
 
 ### 6.3 起動時のモデル一覧解決
@@ -240,7 +250,7 @@ export function logError(log: Logger, err: unknown, context: Record<string, unkn
 | `RateLimitError` | `agent.send` | re-throw（リトライなし）。`retryAfterMs` があればログに記録 | `error` |
 | `NetworkError` | 任意 | `isRetryable=true` の場合のみ 1 回だけ 500ms バックオフでリトライ。失敗時 re-throw | `warn`（リトライ）/ `error`（最終） |
 | `IntegrationNotConnectedError` | 任意 | re-throw | `error` |
-| `UnknownAgentError`（プール agent が消失） | `agent.send` | プールから除去 → 即時新規 Agent で 1 回再試行 | `warn` |
+| `UnknownAgentError`（プール agent が消失） | `agent.send` | プールから除去 → 即時新規 `Agent.create` で 1 回再試行。**再試行成功後は §6.2 ステップ 6 と同等に `pool.put(nextHash, ...)` を実行**してプール最適化の連続性を維持 | `warn` |
 | `CursorSdkError` その他派生 | 任意 | re-throw | `error` |
 | 予期せぬ例外 | 任意 | re-throw | `error` |
 
@@ -248,26 +258,42 @@ export function logError(log: Logger, err: unknown, context: Record<string, unkn
 
 | ステータス | 動作 |
 |---|---|
-| `finished` | stream に `finish` パート enqueue |
-| `error` | error メタ情報をログ（メッセージ本文は length のみ）→ stream に error パート enqueue → `controller.error` |
-| `cancelled` | `warn` ログ → stream に `finish(reason="abort")` enqueue |
-| その他 | `error` ログ → stream に error パート enqueue |
+| `finished` | stream に `finish` パート enqueue → `controller.close()` |
+| `error` | error メタ情報をログ（メッセージ本文は length のみ）→ stream に `error` パート enqueue → `controller.close()`（**`controller.error()` は呼ばない**: WHATWG Streams の `ResetQueue` で直前 enqueue が破棄されエラー情報が失われるため、`error` パートをデータとして配送し切る方式を採用） |
+| `cancelled` | `warn` ログ → stream に `finish(reason="abort")` enqueue → `controller.close()` |
+| その他 | `error` ログ → stream に `error` パート enqueue → `controller.close()`（`error` 行と同方針） |
 
 ### 7.3 キャンセレーション
 
 - OpenCode が渡す `AbortSignal` を監視
 - 発火時:
   1. onDelta ループから抜ける
-  2. プール内の agent は **close せず保持**（reuse 可能性のため）
+  2. **対象 agent の出自で分岐**:
+     - **プールヒット経由**（既にプールにある agent）: close せず保持（reuse 可能性のため）
+     - **プールミス経由**（§6.2 で `Agent.create` 直後、`pool.put` 未実行の agent）: **`prefixHash` を暫定キーとして即時 `pool.put`** で登録し、後続ターンの再開で再利用可能にする。LRU 退避時の優先順位はその時点の `lastUsedAt` に従う（特別扱いはしない）。プール上限が逼迫している場合は最古エントリが押し出されて `agent.close()`（5s タイムアウト）されるため、孤立 agent が滞留することはない
   3. `controller.close()`
 
-### 7.4 Tool-call 警告挿入
+> 補足: §6.2 ステップ 6 の正常完了経路では `pool.put(nextHash, ...)` が実行されるが、キャンセル経路では「nextHash まで履歴が伸びていない」状態で終わるため、暫定キーには `prefixHash`（送信前の履歴ハッシュ）を採用する。次ターンで同じ会話が再開されれば `prefixHash` で即ヒットする。
 
-- `ToolCallStartedUpdate` 受信時、stream に text-delta として以下を挿入:
-  ```
-  ⚠️ [cursor-provider] Cursor agent attempted to use tool: <toolName>. Pure LLM mode is in effect; the tool call is surfaced for visibility but not executed by OpenCode.
-  ```
-- 同時に `log.warn("cursor: unexpected tool-call in Pure LLM mode", { toolName })`
+### 7.4 Tool-call 関連イベントの扱い
+
+`@cursor/sdk` の `InteractionUpdate` には以下 3 種のツールコール関連イベントが存在する:
+
+| イベント型 | 処理 |
+|---|---|
+| `ToolCallStartedUpdate` | stream に text-delta として警告メッセージを **1 回のみ** 挿入し、`log.warn` を出力。同 ToolCall（`toolCallId` 等で識別）に対する警告は重複させない |
+| `PartialToolCallUpdate` | **無視（ドロップ）**。引数 JSON 断片が text-delta に流出するのを防ぐ。`log.debug` のみ任意で記録 |
+| `ToolCallCompletedUpdate` | **無視（ドロップ）**。完了通知も警告対象外。`log.debug` のみ任意で記録 |
+
+警告メッセージ本文:
+
+```
+⚠️ [cursor-provider] Cursor agent attempted to use tool: <toolName>. Pure LLM mode is in effect; the tool call is surfaced for visibility but not executed by OpenCode.
+```
+
+同時にログ: `log.warn("cursor: unexpected tool-call in Pure LLM mode", { toolName, toolCallId })`
+
+> 設計意図: Pure LLM モード（質問 4-A）では Cursor がツールを実行しないことを期待するが、実装上 Cursor SDK がツール呼び出しを発火する余地は残る。Started のみを警告対象とすることで「ツール呼び出しが発生した事実」を運用者に通知しつつ、Delta／Completed の派生イベントが UI に漏出するノイズを排除する。
 
 ### 7.5 `chat.params` 警告
 
@@ -298,9 +324,9 @@ export function logError(log: Logger, err: unknown, context: Record<string, unkn
 | ファイル | 主要観点 |
 |---|---|
 | `tests/translator.test.ts` | 空履歴／履歴あり／連続 user message のハッシュ安定性、`prefixHash` と `nextHash` の分離、履歴分岐でハッシュ不一致、整形フォーマット、空 prompt や非対応ロールの拒否 |
-| `tests/agent-pool.test.ts` | LRU 退避、`lastUsedAt` 更新、`rekey`、close 失敗時の warn、5s タイムアウト（fake timers）、apiKey 違いで別エントリ |
-| `tests/stream-proxy.test.ts` | TextDelta → text-delta、Thinking → reasoning-delta、ToolCallStarted → 警告挿入 + warn、TurnEnded → finish、AbortSignal でクローズ、`run.status=error` で error パート |
-| `tests/errors.test.ts` | 各 Cursor 例外型のマッピング、NetworkError リトライ 1 回上限、UnknownAgentError でプール除去 |
+| `tests/agent-pool.test.ts` | LRU 退避、`lastUsedAt` 更新、`rekey`、close 失敗時の warn、5s タイムアウト（fake timers）、apiKey 違いで別エントリ、キャンセル経路での暫定 `put(prefixHash)` 後に同 prefixHash で再取得可能 |
+| `tests/stream-proxy.test.ts` | TextDelta → text-delta、Thinking → reasoning-delta、ToolCallStarted → 警告挿入 + warn（同 `toolCallId` で 1 回のみ）、`PartialToolCallUpdate` / `ToolCallCompletedUpdate` がドロップされ text-delta に流出しない、TurnEnded → finish、AbortSignal でクローズ、`run.status=error` で error パート enqueue + `controller.close()`（`controller.error` を呼ばない）、未知イベントが debug ログのみ |
+| `tests/errors.test.ts` | 各 Cursor 例外型のマッピング、NetworkError リトライ 1 回上限、UnknownAgentError でプール除去 + リトライ後 `pool.put(nextHash)` 実行 |
 | `tests/auth.test.ts` | `ctx.auth` 優先、env フォールバック、両方欠落時の `undefined` |
 | `tests/provider.test.ts` | `Cursor.models.list` 成功時の ModelV2 生成、失敗時の静的フォールバック、5s タイムアウト |
 | `tests/models.test.ts` | 静的フォールバックリストのスキーマ検証 |
@@ -319,7 +345,13 @@ export function logError(log: Logger, err: unknown, context: Record<string, unkn
 
 ### 8.5 統合テスト
 
-`tests/integration/provider-flow.test.ts`: モック `@cursor/sdk` を使い、初回呼出 → プールヒット → 退避 → 再ヒットのフルライフサイクルを 1 ケースで通す。
+`tests/integration/provider-flow.test.ts`: モック `@cursor/sdk` を使い、以下のフルライフサイクルをケース化:
+
+1. 初回呼出（プールミス → `Agent.create` → put(nextHash)）
+2. 連続ターンでプールヒット（差分送信 → `rekey`）
+3. 別会話を 8 件投入して LRU 退避を発火、最古 agent が `close()` される
+4. 退避された会話を再開 → 再ミス → 再生成
+5. キャンセル経路: ストリーム途中で `AbortSignal` 発火 → 暫定 `put(prefixHash)` → 次ターン同 prefixHash でヒット
 
 ### 8.6 E2E
 

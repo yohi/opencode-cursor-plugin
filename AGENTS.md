@@ -24,15 +24,14 @@ This is an OpenCode custom tool plugin that exposes the Cursor SDK (`@cursor/sdk
 
 For detailed context, please refer to the following documents before making architectural changes:
 
-- **Specifications (`SPEC.md`):** Contains the complete architectural design, the 7-step execute flow, and the exhaustive list of 11 error-handling edge cases. Always consult this before modifying `.opencode/plugins/custom-tools.ts`.
+- **Specifications (`SPEC.md`):** Contains the complete architectural design, the 8-step execute flow, and the exhaustive list of 11 error-handling edge cases. Always consult this before modifying `.opencode/plugins/custom-tools.ts`.
 - **User Guide (`README.md`):** Contains setup instructions and environment variable requirements (e.g., `CURSOR_API_KEY`).
 
 ## Key Architectural Guidelines
 
-- **Error Handling:** The plugin acts as a thin wrapper. It must catch `CursorAgentError` (including `NetworkError` and other `CursorAgentError-derived` exceptions such as `RateLimitError` and `AuthenticationError`) separately, log them appropriately, and re-throw them to the OpenCode runtime. Additionally, other non-CursorAgentError errors (e.g., generic exceptions) must be handled separately with appropriate logging before re-throwing.
-- **Resource Management:** Always ensure `agent.close()` is called within a `try/finally` block to prevent resource leaks, regardless of success or failure.
+- **Error Handling:** The plugin acts as a thin wrapper. It must catch `CursorAgentError` separately. This includes `NetworkError` and other derived exceptions like `RateLimitError` or `AuthenticationError`. Log these errors appropriately before re-throwing them to the OpenCode runtime. Generic non-CursorAgentError errors must also be handled separately with logging.
+- **Resource Management:** Ensure `agent.close()` is always called within a `try/finally` block to prevent resource leaks. This applies to both success and failure scenarios.
 - **Logging & Security:**
-    - **NEVER use `console.log`.**
-    - Always use the custom `Logger` wrapper around `client.app.log`.
-    - **NEVER write sensitive data to logs.** This includes `CURSOR_API_KEY`, prompt text, and response text.
-    - Only log safe metadata examples (e.g., string lengths, status codes, run IDs).
+    - **Do not use `console.log`.** Instead, always use the custom `Logger` wrapper around `client.app.log`.
+    - **Prohibit writing sensitive data to logs.** This specifically includes `CURSOR_API_KEY`, prompt text, and response text.
+    - Only log safe metadata (e.g., string lengths, status codes, run IDs).

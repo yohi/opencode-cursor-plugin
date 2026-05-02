@@ -30,14 +30,14 @@ This is an OpenCode custom tool plugin that exposes the Cursor SDK (`@cursor/sdk
 
 ## Less is More
 
-Adhere to the "Less is More" principle: minimize complexity in agent design and documentation. Proactively remove redundant logic or documentation. For related architectural constraints, see the Detailed Project Specifications (referred to as [SPEC.md](./SPEC.md)).
+Adhere to the "Less is More" principle: minimize complexity in agent design and documentation. Proactively remove redundant logic or documentation. For related architectural constraints, see the Detailed Project Specifications ([SPEC.md](./SPEC.md)).
 
 ## Progressive Disclosure & Documentation
 
 For detailed context, please refer to the following documents before making architectural changes:
 
 - **Detailed Project Specifications ([SPEC.md](./SPEC.md)):** Contains the complete architectural design, the 8-step execute flow, and the list of 11 error-handling edge cases.
-    - Generally, consult this document before modifying `.opencode/plugins/custom-tools.ts`.
+    - Always consult this document before modifying `.opencode/plugins/custom-tools.ts`.
     - Reference it for any changes that impact the core execution flow.
 - **User Guide (`README.md`):** Contains setup instructions and environment variable requirements (e.g., `CURSOR_API_KEY`).
 
@@ -49,7 +49,7 @@ For detailed context, please refer to the following documents before making arch
     - Use separate documented strategies for generic or alternative implementations.
 - **Resource Management:** In SDK-based usage, ensure `agent.close()` is invoked in a cleanup mechanism like `try/finally` to prevent resource leaks. This applies to both success and failure scenarios.
 - **Logging & Security:**
-    - **Logging Framework:** Unless otherwise required for specialized debugging, always use the custom `Logger` wrapper around `client.app.log` for production code. Avoid using `console.log`.
+    - **Logging Framework:** Always use the custom `Logger` wrapper around `client.app.log` for production code. Avoid using `console.log`.
     - **Temporary Logging:** You may use `console.log` during local development if the primary logger is unavailable. Annotate these instances with a `TODO` for future replacement.
-    - **Data Security:** Strictly avoid including sensitive values such as `CURSOR_API_KEY`, prompt text, or response text in any logs (unless specific redaction mechanisms are confirmed).
+    - **Data Security:** Never include sensitive values such as `CURSOR_API_KEY`, prompt text, or response text in any logs.
     - **Safe Metadata:** Only log safe metadata like string lengths, status codes, or run IDs.

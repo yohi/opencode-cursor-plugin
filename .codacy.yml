@@ -1,5 +1,5 @@
 ---
-ignore_paths:
+exclude_paths:
   # AGENTS.md は AI エージェント向けの特殊な記述形式を含むため、
   # 一般的なドキュメントリンターによる誤検知を避けるために除外します。
   - "AGENTS.md"
@@ -23,4 +23,3 @@ engines:
     exclude_paths:
       - "AGENTS.md"
       - "**/AGENTS.md"
-

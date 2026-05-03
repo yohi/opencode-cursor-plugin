@@ -147,18 +147,39 @@ interface StreamProxyInput {
   agent: SDKAgent;
   message: string;
   abortSignal?: AbortSignal;
+  // pre-stream で `UnknownAgentError` を捕捉した際に呼ばれる新規 Agent 生成
+  // コールバック。プールヒット由来でこのコールバックが定義されている場合のみ
+  // 1 回だけ再試行する。
+  // 戻り値の `message` は **再送信時に使用する文字列**（通常は translator の
+  // `fullPromptOnMiss` 相当）。新規 agent には先行会話の履歴が無いため、
+  // 元の `latestUserMessage` ではなく履歴を含む完全プロンプトを渡す必要がある。
+  // pool.delete / Agent.create リトライ吸収は呼出側 (`runDoStream`) のクロージャ責務。
+  recreateAgent?: () => Promise<{ agent: SDKAgent; message: string }>;
 }
 
 export type StreamFinishReason = "stop" | "abort" | "error";
 
+// 異常終端時に呼出側へ伝播する分類タグ。`finishReason !== "stop"` のときに付与し、
+// 主に `runDoStream` が pool 操作の継続性（rekey vs. delete）を判断するために用いる。
+// `err.constructor.name` をそのまま採用するため Cursor SDK 側の例外型名と一致する。
+export type StreamErrorType =
+  | "UnknownAgentError"
+  | "NetworkError"
+  | "AuthenticationError"
+  | "RateLimitError"
+  | "ConfigurationError"
+  | "IntegrationNotConnectedError"
+  | "CursorSdkError"
+  | "Error";
+
 export function createStream(input: StreamProxyInput): {
   stream: ReadableStream<LanguageModelV2StreamPart>;
-  done: Promise<{ finishReason: StreamFinishReason }>;
+  done: Promise<{ finishReason: StreamFinishReason; errorType?: StreamErrorType }>;
 };
 ```
 
 - 内部で `agent.send(msg, { onDelta, onStep })` を呼び、`onDelta` で `controller.enqueue`
-- **終端契約 (`done` の解決値)**: ストリームが終端した「理由」を `done` の解決値として呼び出し側に通知する。`finishReason` は最初に確定したものを採用する prefer-first 規則で、後続の異常系イベントが上書きしないようにガードする。呼び出し側 (`provider.ts::runDoStream`) はこの値を見て pool 操作を分岐する（§6.2 参照）。
+- **終端契約 (`done` の解決値)**: ストリームが終端した「理由」と「異常時の分類タグ」を `done` の解決値として呼び出し側に通知する。`finishReason` は最初に確定したものを採用する prefer-first 規則で、後続の異常系イベントが上書きしないようにガードする。`finishReason !== "stop"` のとき、catch 経路で捕捉した例外の `err.constructor.name` を `errorType` として併せて返却する（`run.wait()` の `status="error"` 等で例外が無いケースは省略可）。呼び出し側 (`provider.ts::runDoStream`) は `finishReason` で pool の rekey / delete を分岐し、`errorType` で `UnknownAgentError` のリトライ後始末（§6.1 参照）を判断する。
 - **`cancel()` の責務**: `ReadableStream` の `cancel()` ハンドラは内部 `AbortController` を `abort()` し、IIFE の早期終了パスへ合流させる。`controller.close()` を `cancel()` 内で直接呼ばないのは、`cancel()` 経由では controller が既に終端遷移中で `close()` が `TypeError` を投げる可能性があるため。`cancel()` は `finishReason="abort"` を予約し、`done` は abort で解決する。
 - **内部 AbortController の集約**: 外部 `abortSignal` と consumer の `cancel()` を共通の内部シグナルへ集約する。IIFE 側のリトライ・ループも内部シグナルを参照することで両経路で同じ早期終了挙動を保証する。SDK が将来 `agent.send({ signal })` をサポートした際は、内部シグナルをそのまま渡せる構造を維持する。
 - **終端ガード**: 内部状態 `hasClosedStream: boolean` を保持。終端処理は以下のヘルパに統一する:
@@ -189,6 +210,7 @@ export function createStream(input: StreamProxyInput): {
   - `run.wait()` 解決中／解決後 → `"post-stream"`
   - （`"create"` は `provider.ts` 側で `Agent.create` を直接呼ぶ箇所が判定する）
 - `classifyError` が `retry: true` を返した場合のみ §7.1 のリトライ処理へ進む。それ以外は即 re-throw → §7.2 の error ステータス相当として `safeEnqueue(error part)` → `safeClose()`
+- **UnknownAgentError 専用リトライ**: `phase="pre-stream"` かつ `err.constructor.name === "UnknownAgentError"` かつ `recreateAgent` が定義済みのケースのみ、`recreateAgent()` を 1 回だけ呼び出して `{ agent, message }` を取得 → 取得した新 agent に対し `agent.send(message, { onDelta })` を再実行（`message` は新 agent に履歴が無いため `fullPromptOnMiss` 相当の完全プロンプトを呼出側が渡す）→ `run.wait()` の status を主経路と同じく分岐（`finished` / `cancelled` / その他）して `safeEnqueue` + `safeClose`。`recreateAgent` 内部の `Agent.create` リトライ（NetworkError 500ms バックオフ）は呼出側 (`runDoStream`) のクロージャ責務で、`stream-proxy` は単一試行として扱う。`recreateAgent()` または再 `agent.send` で例外が出た場合は `safeEnqueue(error part)` → `safeClose()` で終端し、`done` を `errorType="UnknownAgentError"` 付きで解決する
 
 ### 5.4 `provider.ts`
 
@@ -258,11 +280,18 @@ export function logError(log: Logger, err: unknown, context: Record<string, unkn
 2. translator.translate(messages)
    → { prefixHash, latestUserMessage, nextHash }
 3. agent-pool.tryGet(prefixHash, modelId, apiKey) → PooledAgent ヒット
-4. stream-proxy.createStream({ agent, message: latestUserMessage })
+4. stream-proxy.createStream({ agent, message: latestUserMessage, recreateAgent })
+   - `recreateAgent` は呼出側 (`runDoStream`) が注入するクロージャで、
+     `pool.delete(prefixHash, modelId, apiKey) → Agent.create(...)` を実行し
+     `{ agent: 新 agent, message: fullPromptOnMiss }` を返す（新 agent には
+     先行会話の履歴が無いため、再送信時は完全プロンプトを使う）
 5. onDelta 発火ごとに ReadableStream へ enqueue
 6. TurnEnded で controller.close()
-7. done が解決したら finishReason に応じて分岐:
+7. done が解決したら (finishReason, errorType) に応じて分岐:
    - finishReason="stop": agent-pool.rekey(fingerprint, modelId, prefixHash, nextHash)
+     - 直前にストリーム内 UnknownAgentError リトライ（§7.1）が走った場合、
+       現在の agent はプール未登録の新インスタンスなので追加で
+       `pool.put(nextHash, ...)` を実行（rekey はスキップ）
    - finishReason="abort"|"error": agent-pool.delete(prefixHash, modelId, apiKey)
      （内部で agent.close を 5s タイムアウト付きで実行 / 異常 agent をプールに残さない）
 ```
@@ -274,14 +303,17 @@ export function logError(log: Logger, err: unknown, context: Record<string, unkn
 2. translator.translate(messages) → { fullPromptOnMiss, nextHash, ... }
 3. agent-pool.tryGet(prefixHash) → undefined
 4. Agent.create({ apiKey, model: { id }, local: { cwd } })
+   - 例外時は `classifyError(err, { phase: "create" })` を評価し
+     `retry: true`（NetworkError 等）なら 500ms バックオフで 1 回再試行
+   - 再試行も失敗した場合は呼出側へ throw（OpenCode 上位で扱う）
 5. stream-proxy.createStream({ agent, message: fullPromptOnMiss })
+   - プールミス経路では `recreateAgent` は注入しない（UnknownAgentError は
+     `Agent.create` 直後の新規 agent では発生しない前提）
 6. done が解決したら finishReason に応じて分岐:
 6-a. (finishReason="stop") agent-pool.put(nextHash, { agent, ... })
        → LRU 容量超過時は最古を close（5s timeout）
 6-b. (finishReason="abort"|"error") agent.close() を 5s タイムアウトで実行
        → プールには登録しない。次ターンは必ず §6.2 を新規再実行（§7.3 参照）
-6-c. (例外) §7.1 のマッピングに従い処理
-       UnknownAgentError でリトライした場合は §6.2 の 4〜6-a 経路を再実行
 ```
 
 > **旧設計からの差分**: 以前は「キャンセル」と「正常完了」の 2 分岐で `abortSignal.aborted` を直接参照していたが、`status=error` / `status=cancelled`（abortSignal 未トリガ）/ `agent.send` 例外などの異常系経路で破損した agent が pool.put / pool.rekey を経由して次ターンに引き継がれる不具合があった。`createStream` の `done` 解決値に `finishReason` を含める契約に変更し、呼び出し側はそれを唯一の判定基準とする。
@@ -321,9 +353,9 @@ export function logError(log: Logger, err: unknown, context: Record<string, unkn
 | `AuthenticationError` | `Agent.create` / `agent.send` | プールから除去 → re-throw。`models()` 内で発火した場合は静的フォールバックへ退避 | `error` |
 | `ConfigurationError` | `Agent.create` / `agent.send` | re-throw | `error` |
 | `RateLimitError` | `agent.send` | re-throw（リトライなし）。`retryAfterMs` があればログに記録 | `error` |
-| `NetworkError` | `Agent.create` 中、または `agent.send` 呼出直後で **onDelta 未発火** の段階に限り | `isRetryable=true` の場合 1 回だけ 500ms バックオフでリトライ。onDelta 発火後または `run.wait()` 解決中は re-throw（`agent.send` は one-shot で resume 不可のため、リトライすると先行 enqueue 済みチャンクとリトライ側のチャンクが重複しストリームが破損する）。失敗時 re-throw | `warn`（リトライ）/ `error`（最終 / リトライ不可で再スロー） |
+| `NetworkError` | `Agent.create` 中（`runDoStream` 内）、または `agent.send` 呼出直後で **onDelta 未発火** の段階（`stream-proxy` 内）に限り | `isRetryable=true` の場合 1 回だけ 500ms バックオフでリトライ。`Agent.create` 段階のリトライは `runDoStream` が `classifyError(err, { phase: "create" })` で判定し直接実行する。`agent.send` 段階のリトライは `stream-proxy` が pre-stream phase で実行する。onDelta 発火後または `run.wait()` 解決中は re-throw（`agent.send` は one-shot で resume 不可のため、リトライすると先行 enqueue 済みチャンクとリトライ側のチャンクが重複しストリームが破損する）。失敗時 re-throw | `warn`（リトライ）/ `error`（最終 / リトライ不可で再スロー） |
 | `IntegrationNotConnectedError` | 任意 | re-throw | `error` |
-| `UnknownAgentError`（プール agent が消失） | `agent.send` | プールから除去 → 即時新規 `Agent.create` で 1 回再試行。**再試行成功後は §6.2 ステップ 6 と同等に `pool.put(nextHash, ...)` を実行**してプール最適化の連続性を維持 | `warn` |
+| `UnknownAgentError`（プール agent が消失） | `agent.send`（pre-stream） | `stream-proxy` が `recreateAgent` コールバック経由で 1 回だけ再試行する。`recreateAgent` は呼出側 (`runDoStream`) が注入するクロージャで、内部で `pool.delete(prefixHash, modelId, apiKey)` を実行してから新規 `Agent.create` を呼ぶ。再試行で取得した新 agent で `agent.send(latestUserMessage, { onDelta })` を実行し、`run.wait()` の status を主経路と同様に分岐する。再試行成功時は `done` を `finishReason="stop"` で解決し、`runDoStream` 側で **§6.2 ステップ 6-a と同等の `pool.put(nextHash, ...)` を実行**してプール最適化の連続性を維持する（rekey は `prefixHash` のエントリを既に削除しているのでスキップ）。再試行も失敗した場合は `errorType` 付きで `done` を解決し、上位で `agent.close` を実行 | `warn` |
 | `CursorSdkError` その他派生 | 任意 | re-throw | `error` |
 | 予期せぬ例外 | 任意 | re-throw | `error` |
 
@@ -349,6 +381,7 @@ export function logError(log: Logger, err: unknown, context: Record<string, unkn
 
 - **起動前 abort のショートサーキット**: `stream-proxy` 起動時点で内部シグナルが `aborted=true` の場合は `agent.send` を呼び出さず、`finish(abort)` パートを 1 度だけ enqueue して即 close する
 - **リトライ境界での abort 確認**: `pre-stream` のバックオフ待機後、2 回目の `agent.send` を呼ぶ前に内部シグナル `aborted` を再確認し、true の場合はリトライをスキップして `finish(abort)` で終端する
+- **リトライ後の status 検査**: pre-stream の NetworkError リトライ／UnknownAgentError リトライのいずれの経路でも、再実行した `run.wait()` の `status` を主経路（§7.2）と同じく `finished` / `cancelled` / `error` / その他で分岐し、`safeEnqueue` で finish / error パートを発行する。リトライ経路で status を破棄して即 `safeClose()` する実装は禁止（consumer がエラー通知を受け取れずストリームが無言終了するため）
 - 発火時:
   1. onDelta ループから抜ける
   2. **出自に応じて agent をクローズ**（二重 close 防止のため経路ごとに責務を分離）:
@@ -418,10 +451,10 @@ export function logError(log: Logger, err: unknown, context: Record<string, unkn
 |---|---|
 | `tests/translator.test.ts` | 空履歴／履歴あり／連続 user message のハッシュ安定性、`prefixHash` と `nextHash` の分離、履歴分岐でハッシュ不一致、整形フォーマット、空 prompt や非対応ロールの拒否、**assistant メッセージを含む履歴で連続 2 ターンが同一プールキーで結ばれる（`turn1.nextHash === turn2.prefixHash`）**、**assistant 応答内容が変わっても user 列が同じならハッシュは変わらない（assistant 列がフィルタされている確認）**、末尾が user でない messages 配列を拒否 |
 | `tests/agent-pool.test.ts` | LRU 退避、`lastUsedAt` 更新、`rekey`、close 失敗時の warn、5s タイムアウト（fake timers）、apiKey 違いで別エントリ、**キャンセル経路で `agent.close()` が 5s タイムアウト付きで呼ばれ、プールには登録されないこと**、**`delete` で該当エントリ除去 + `agent.close()` が 5s タイムアウト付きで呼ばれる、未存在キーへの `delete` が no-op となる**、**異なる fingerprint で同じ prefixHash を put した状態で一方のみを `rekey` しても他方が巻き込まれない（ハッシュ衝突回帰）** |
-| `tests/stream-proxy.test.ts` | TextDelta → text-delta、Thinking → reasoning-delta、ToolCallStarted → 警告挿入 + warn（同 `toolCallId` で 1 回のみ）、`PartialToolCallUpdate` / `ToolCallCompletedUpdate` がドロップされ text-delta に流出しない、TurnEnded → finish、AbortSignal でクローズ、`run.status=error` で error パート enqueue + `controller.close()`（`controller.error` を呼ばない）、未知イベントが debug ログのみ、**1 chunk 配送後 (`hasEmittedDelta=true`) の NetworkError でリトライが発火せず error パートが流れる（重複防止）**、`hasEmittedDelta=false` 時の NetworkError ではリトライが 1 回発火してから配送が継続する、**`TurnEndedUpdate` 後に `run.wait()` が `finished` で解決しても `controller.enqueue` / `close` が二度呼ばれない（`hasClosedStream` ガード動作）**、**`safeEnqueue` が close 後の呼出を debug ログのみで握り潰す**、**起動時点で `abortSignal.aborted=true` の場合 `agent.send` を呼ばずに finish(abort) を 1 回だけ enqueue する**、**pre-stream リトライのバックオフ中に abort された場合、2 回目の `agent.send` をスキップして finish(abort) で終端する** |
+| `tests/stream-proxy.test.ts` | TextDelta → text-delta、Thinking → reasoning-delta、ToolCallStarted → 警告挿入 + warn（同 `toolCallId` で 1 回のみ）、`PartialToolCallUpdate` / `ToolCallCompletedUpdate` がドロップされ text-delta に流出しない、TurnEnded → finish、AbortSignal でクローズ、`run.status=error` で error パート enqueue + `controller.close()`（`controller.error` を呼ばない）、未知イベントが debug ログのみ、**1 chunk 配送後 (`hasEmittedDelta=true`) の NetworkError でリトライが発火せず error パートが流れる（重複防止）**、`hasEmittedDelta=false` 時の NetworkError ではリトライが 1 回発火してから配送が継続する、**`TurnEndedUpdate` 後に `run.wait()` が `finished` で解決しても `controller.enqueue` / `close` が二度呼ばれない（`hasClosedStream` ガード動作）**、**`safeEnqueue` が close 後の呼出を debug ログのみで握り潰す**、**起動時点で `abortSignal.aborted=true` の場合 `agent.send` を呼ばずに finish(abort) を 1 回だけ enqueue する**、**pre-stream リトライのバックオフ中に abort された場合、2 回目の `agent.send` をスキップして finish(abort) で終端する**、**pre-stream NetworkError リトライ後の `run.wait()` が `status="error"` で解決した場合、主経路と同じく `error` パートが enqueue されてから close する（リトライ経路の status 分岐回帰）**、**`UnknownAgentError` 発生時、`recreateAgent` が定義されていれば 1 回呼び出され、`recreateAgent` が返した `message`（`fullPromptOnMiss` 相当）を新 agent に送って再試行し、成功すれば `done` が `{finishReason:"stop"}` で解決する（`latestUserMessage` ではなく完全プロンプトが送られる回帰）**、**`UnknownAgentError` 発生時、`recreateAgent` が失敗すると `done` が `{finishReason:"error", errorType:"UnknownAgentError"}` で解決する**、**`UnknownAgentError` 発生時に `recreateAgent` 未注入なら再試行せず error パートを流す** |
 | `tests/errors.test.ts` | 各 Cursor 例外型のマッピング、`classifyError` の phase 別判定（NetworkError × `create` / `pre-stream` で `retry: true`、`in-stream` / `post-stream` で `retry: false`）、NetworkError リトライ 1 回上限、UnknownAgentError でプール除去 + リトライ後 `pool.put(nextHash)` 実行 |
 | `tests/auth.test.ts` | `ctx.auth` 優先、env フォールバック、両方欠落時の `undefined` |
-| `tests/provider.test.ts` | `Cursor.models.list` 成功時の ModelV2 生成、失敗時の静的フォールバック、5s タイムアウト、**`doStream` 呼出のたびに `resolveApiKey(ctx)` が再評価され、API キーローテーション後も `models()` 再取得なしで新しい鍵が使われる**、**`chat.params` 警告がフック単位で 1 度のみ、`createProviderHook` を再生成すれば再度発火する（テスト間独立性）** |
+| `tests/provider.test.ts` | `Cursor.models.list` 成功時の ModelV2 生成、失敗時の静的フォールバック、5s タイムアウト、**`doStream` 呼出のたびに `resolveApiKey(ctx)` が再評価され、API キーローテーション後も `models()` 再取得なしで新しい鍵が使われる**、**`chat.params` 警告がフック単位で 1 度のみ、`createProviderHook` を再生成すれば再度発火する（テスト間独立性）**、**プールミス経路で `Agent.create` が NetworkError 時に 500ms バックオフで 1 回再試行される**、**プールヒット経路で `UnknownAgentError` リトライが成功した場合、`pool.delete(prefixHash)` 呼出後に新 agent が `pool.put(nextHash, ...)` で登録される（rekey は呼ばれない）** |
 | `tests/models.test.ts` | 静的フォールバックリストのスキーマ検証 |
 | `tests/logger.test.ts` | API キー／prompt 本文がログに含まれない（負のテスト）、レベル切替 |
 

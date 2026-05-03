@@ -606,11 +606,16 @@ import { createLogger } from "../.opencode/plugins/cursor-provider/logger";
 
 const log = createLogger({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() });
 
-const makeAgent = () => ({
+// makeAgent は呼出側が指定した apiKey からフィンガープリントを再算出するため、
+// テスト側でも `tryGet` / `delete` に同じ apiKey を渡す必要がある。
+// 内部では複合キー `${fingerprint}:${modelId}:${hash}` で識別され、`tryGet` 側は
+// `fingerprintApiKey(apiKey)` を再計算してエントリを引くため、テストの
+// `apiKeyFingerprint` も `fingerprintApiKey(apiKey)` で揃える。
+const makeAgent = (apiKey = "key-original") => ({
   agent: { close: vi.fn().mockResolvedValue(undefined) } as any,
   lastUsedAt: Date.now(),
   modelId: "composer-2",
-  apiKeyFingerprint: "abcd1234",
+  apiKeyFingerprint: fingerprintApiKey(apiKey),
 });
 
 describe("AgentPool", () => {
@@ -619,10 +624,11 @@ describe("AgentPool", () => {
 
   it("tryGet ヒット時に lastUsedAt が更新される", () => {
     const pool = createAgentPool({ log, capacity: 8 });
-    const a = makeAgent();
+    const apiKey = "key-original";
+    const a = makeAgent(apiKey);
     pool.put("h1", a);
     vi.advanceTimersByTime(1000);
-    const got = pool.tryGet("h1", a.modelId, "key-original");
+    const got = pool.tryGet("h1", a.modelId, apiKey);
     expect(got).toBeDefined();
   });
 
@@ -649,11 +655,8 @@ describe("AgentPool", () => {
 
   it("rekey で旧キーが無効化、新キーで取れる", () => {
     const pool = createAgentPool({ log, capacity: 8 });
-    const a = makeAgent();
-    // makeAgent() は apiKeyFingerprint = "abcd1234" を返す。tryGet 側は apiKey から
-    // fingerprint を再算出するため、テストでも同じ fingerprint を生成する apiKey を渡す。
     const apiKey = "key-original";
-    a.apiKeyFingerprint = fingerprintApiKey(apiKey);
+    const a = makeAgent(apiKey);
     pool.put("old", a);
     pool.rekey(a.apiKeyFingerprint, a.modelId, "old", "new");
     expect(pool.tryGet("old", a.modelId, apiKey)).toBeUndefined();
@@ -666,10 +669,8 @@ describe("AgentPool", () => {
     const pool = createAgentPool({ log, capacity: 8 });
     const apiKeyA = "user-a";
     const apiKeyB = "user-b";
-    const a = makeAgent();
-    a.apiKeyFingerprint = fingerprintApiKey(apiKeyA);
-    const b = makeAgent();
-    b.apiKeyFingerprint = fingerprintApiKey(apiKeyB);
+    const a = makeAgent(apiKeyA);
+    const b = makeAgent(apiKeyB);
     pool.put("shared", a);
     pool.put("shared", b);
 
@@ -684,11 +685,12 @@ describe("AgentPool", () => {
 
   it("delete で該当エントリ除去 + agent.close を 5s タイムアウト付きで実行", async () => {
     const pool = createAgentPool({ log, capacity: 8 });
-    const a = makeAgent();
+    const apiKey = "k";
+    const a = makeAgent(apiKey);
     await pool.put("h1", a);
-    await pool.delete("h1", a.modelId, "k");
+    await pool.delete("h1", a.modelId, apiKey);
     expect(a.agent.close).toHaveBeenCalled();
-    expect(pool.tryGet("h1", a.modelId, "k")).toBeUndefined();
+    expect(pool.tryGet("h1", a.modelId, apiKey)).toBeUndefined();
   });
 
   it("delete: 未存在キーは no-op", async () => {
@@ -698,13 +700,17 @@ describe("AgentPool", () => {
 
   it("apiKey が異なれば別エントリとして扱う", () => {
     const pool = createAgentPool({ log, capacity: 8 });
-    const a = makeAgent();
-    a.apiKeyFingerprint = "aaaaaaaa";
+    const apiKeyA = "key-a";
+    const apiKeyB = "key-b";
+    const a = makeAgent(apiKeyA);
     pool.put("h1", a);
-    const b = makeAgent();
-    b.apiKeyFingerprint = "bbbbbbbb";
+    const b = makeAgent(apiKeyB);
     pool.put("h1", b);
-    expect(pool.tryGet("h1", a.modelId, "key-a")).toBeDefined();
+    expect(pool.tryGet("h1", a.modelId, apiKeyA)).toBeDefined();
+    expect(pool.tryGet("h1", b.modelId, apiKeyB)).toBeDefined();
+    // 識別は複合キーで行うので A の apiKey で B の prefixHash は引けない（同 hash でも別エントリ）
+    expect(pool.tryGet("h1", a.modelId, apiKeyA)?.apiKeyFingerprint).toBe(a.apiKeyFingerprint);
+    expect(pool.tryGet("h1", b.modelId, apiKeyB)?.apiKeyFingerprint).toBe(b.apiKeyFingerprint);
   });
 
   it("closeAll で全エントリの agent.close を呼ぶ", async () => {
@@ -1156,6 +1162,18 @@ import { describe, it, expect, vi } from "vitest";
 import { createStream } from "../.opencode/plugins/cursor-provider/stream-proxy";
 import { createLogger } from "../.opencode/plugins/cursor-provider/logger";
 
+// `@cursor/sdk` の例外型をテスト内で生成するため、軽量モックを定義する。
+// `isRetryable` プロパティは NetworkError のみ classifyError 経由で参照される。
+vi.mock("@cursor/sdk", () => ({
+  NetworkError: class extends Error { isRetryable = true; },
+  UnknownAgentError: class extends Error {},
+  AuthenticationError: class extends Error {},
+  ConfigurationError: class extends Error {},
+  RateLimitError: class extends Error {},
+  IntegrationNotConnectedError: class extends Error {},
+  CursorSdkError: class extends Error {},
+}));
+
 const log = createLogger({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() });
 
 const fakeAgent = (impl: (cb: (u: any) => void) => Promise<{ status: string }>) => ({
@@ -1305,6 +1323,69 @@ describe("stream-proxy", () => {
     const parts = await collect(stream);
     expect(parts.some((p) => p.type === "text-delta")).toBe(false);
   });
+
+  it("pre-stream NetworkError リトライ後の status=error で error パートが enqueue される", async () => {
+    const { NetworkError } = await import("@cursor/sdk");
+    const err = new NetworkError("flap");
+    (err as any).isRetryable = true;
+    let calls = 0;
+    const agent = {
+      send: vi.fn(async (_msg: string, _opts: any) => {
+        calls += 1;
+        if (calls === 1) throw err;
+        return { wait: async () => ({ status: "error" }) };
+      }),
+      close: vi.fn(),
+    } as any;
+    const { stream, done } = createStream({ agent, message: "m", log });
+    const parts = await collect(stream);
+    expect(calls).toBe(2);
+    expect(parts.some((p) => p.type === "error")).toBe(true);
+    await expect(done).resolves.toMatchObject({ finishReason: "error" });
+  });
+
+  it("UnknownAgentError + recreateAgent あり: 1 回再試行して成功する", async () => {
+    const { UnknownAgentError } = await import("@cursor/sdk");
+    const err = new UnknownAgentError("agent gone");
+    const oldAgent = {
+      send: vi.fn(async () => { throw err; }),
+      close: vi.fn(),
+    } as any;
+    const newAgent = fakeAgent(async (onDelta) => {
+      onDelta({ type: "text-delta", text: "from-new" });
+      onDelta({ type: "turn-ended" });
+      return { status: "finished" };
+    });
+    const recreateAgent = vi.fn(async () => ({ agent: newAgent, message: "full-prompt" }));
+    const { stream, done } = createStream({ agent: oldAgent, message: "m", log, recreateAgent });
+    const parts = await collect(stream);
+    expect(recreateAgent).toHaveBeenCalledTimes(1);
+    // 新規 agent には完全プロンプトが渡される（latestUserMessage ではない）。
+    expect(newAgent.send).toHaveBeenCalledWith("full-prompt", expect.any(Object));
+    expect(parts.some((p) => p.type === "text-delta" && p.text === "from-new")).toBe(true);
+    await expect(done).resolves.toEqual({ finishReason: "stop" });
+  });
+
+  it("UnknownAgentError + recreateAgent あり: 再試行も失敗すると errorType 付きで終端する", async () => {
+    const { UnknownAgentError } = await import("@cursor/sdk");
+    const err = new UnknownAgentError("agent gone");
+    const oldAgent = { send: vi.fn(async () => { throw err; }), close: vi.fn() } as any;
+    const recreateAgent = vi.fn(async () => { throw new Error("create failed"); });
+    const { stream, done } = createStream({ agent: oldAgent, message: "m", log, recreateAgent });
+    const parts = await collect(stream);
+    expect(parts.some((p) => p.type === "error")).toBe(true);
+    await expect(done).resolves.toEqual({ finishReason: "error", errorType: "UnknownAgentError" });
+  });
+
+  it("UnknownAgentError + recreateAgent なし: リトライせず error パートを流す", async () => {
+    const { UnknownAgentError } = await import("@cursor/sdk");
+    const err = new UnknownAgentError("agent gone");
+    const oldAgent = { send: vi.fn(async () => { throw err; }), close: vi.fn() } as any;
+    const { stream, done } = createStream({ agent: oldAgent, message: "m", log });
+    const parts = await collect(stream);
+    expect(parts.some((p) => p.type === "error")).toBe(true);
+    await expect(done).resolves.toMatchObject({ finishReason: "error" });
+  });
 });
 ```
 
@@ -1324,6 +1405,14 @@ export interface StreamProxyInput {
   message: string;
   log: Logger;
   abortSignal?: AbortSignal;
+  // pre-stream で UnknownAgentError を捕捉した際に呼ばれる新規 Agent 生成
+  // コールバック。プールヒット由来でこのコールバックが定義されている場合のみ
+  // 1 回だけ再試行する。
+  // 戻り値の `message` は再送信時に使う文字列（呼出側が `fullPromptOnMiss` を
+  // 渡す）。新規 agent には会話履歴が無いため `latestUserMessage` ではなく
+  // 完全プロンプトを送る必要がある（design §5.3 / §6.1）。
+  // pool.delete / Agent.create リトライ吸収は呼出側 (runDoStream) のクロージャ責務。
+  recreateAgent?: () => Promise<{ agent: SDKAgent; message: string }>;
 }
 
 const TOOL_WARNING = (name: string) =>
@@ -1331,11 +1420,23 @@ const TOOL_WARNING = (name: string) =>
 
 export type StreamFinishReason = "stop" | "abort" | "error";
 
+export type StreamErrorType =
+  | "UnknownAgentError"
+  | "NetworkError"
+  | "AuthenticationError"
+  | "RateLimitError"
+  | "ConfigurationError"
+  | "IntegrationNotConnectedError"
+  | "CursorSdkError"
+  | "Error";
+
 export function createStream(input: StreamProxyInput): {
   stream: ReadableStream<any>;
-  done: Promise<{ finishReason: StreamFinishReason }>;
+  done: Promise<{ finishReason: StreamFinishReason; errorType?: StreamErrorType }>;
 } {
-  const { agent, message, log, abortSignal } = input;
+  const { agent: initialAgent, message, log, abortSignal, recreateAgent } = input;
+  // initialAgent は再試行で差し替えられる可能性があるため let で保持。
+  let agent = initialAgent;
   let hasClosedStream = false;
   let hasEmittedDelta = false;
   // 終端理由は最初に確定したものを採用する（`safeClose` と同じ "prefer-first" 規則）。
@@ -1402,10 +1503,37 @@ export function createStream(input: StreamProxyInput): {
     }
   };
 
-  let donePromiseResolve!: (v: { finishReason: StreamFinishReason }) => void;
-  const done = new Promise<{ finishReason: StreamFinishReason }>((r) => {
+  // 異常終端時の分類タグ。`finishReason !== "stop"` のとき、catch 経路で
+  // 捕捉した例外の `err.constructor.name` を保存して `done` の解決値に含める。
+  // 呼出側 (runDoStream) が UnknownAgentError リトライ後の pool.put 等を判定するために用いる。
+  let lastErrorType: StreamErrorType | undefined;
+  const captureErrorType = (err: unknown) => {
+    lastErrorType = ((err as Error)?.constructor?.name ?? "Error") as StreamErrorType;
+  };
+
+  let donePromiseResolve!: (v: { finishReason: StreamFinishReason; errorType?: StreamErrorType }) => void;
+  const done = new Promise<{ finishReason: StreamFinishReason; errorType?: StreamErrorType }>((r) => {
     donePromiseResolve = r;
   });
+
+  // run.wait() の status を finish/error パート enqueue + safeClose に変換する共通分岐。
+  // 主経路と pre-stream リトライ経路で同じセマンティクスを保つために抽出する
+  // （リトライ経路で status を破棄して即 safeClose する実装は consumer に
+  // エラーが届かないため禁止 / design §7.3）。
+  const handleRunStatus = (result: { status: string }) => {
+    if (result.status === "finished") {
+      safeEnqueue({ type: "finish", finishReason: "stop" });
+      safeClose();
+    } else if (result.status === "cancelled") {
+      log.warn("stream-proxy: run cancelled");
+      safeEnqueue({ type: "finish", finishReason: "abort" });
+      safeClose();
+    } else {
+      log.error("stream-proxy: run.status non-finished", { status: result.status });
+      safeEnqueue({ type: "error", error: { message: `cursor: status=${result.status}` } });
+      safeClose();
+    }
+  };
 
   const stream = new ReadableStream<any>({
     start(c) {
@@ -1439,24 +1567,42 @@ export function createStream(input: StreamProxyInput): {
           // SDK 側の継続実行による副作用を抑える。
           const run = await agent.send(message, { onDelta });
           const result = await (run as any).wait();
-          if (result.status === "finished") {
-            // Usually TurnEnded already closed; guard handles double-close
-            safeEnqueue({ type: "finish", finishReason: "stop" });
-            safeClose();
-          } else if (result.status === "cancelled") {
-            log.warn("stream-proxy: run cancelled");
-            safeEnqueue({ type: "finish", finishReason: "abort" });
-            safeClose();
-          } else {
-            log.error("stream-proxy: run.status non-finished", { status: result.status });
-            safeEnqueue({ type: "error", error: { message: `cursor: status=${result.status}` } });
-            safeClose();
-          }
+          handleRunStatus(result);
         } catch (err) {
           const phase = !hasEmittedDelta ? "pre-stream" : "in-stream";
+          const errName = (err as Error)?.constructor?.name;
+
+          // UnknownAgentError 専用パス: pre-stream かつ recreateAgent がある場合
+          // のみ、新規 agent で 1 回だけ再試行する（design §7.1）。新規 agent は
+          // 履歴を持たないため、再送信メッセージは recreateAgent の戻り値から
+          // 受け取る（呼出側が fullPromptOnMiss 相当を返す責務）。
+          // pool.delete / Agent.create リトライ吸収は recreateAgent クロージャ側の責務。
+          if (
+            phase === "pre-stream" &&
+            errName === "UnknownAgentError" &&
+            recreateAgent &&
+            !internalAbort.signal.aborted
+          ) {
+            log.warn("stream-proxy: UnknownAgentError; retrying with new agent");
+            try {
+              const recreated = await recreateAgent();
+              agent = recreated.agent;
+              const run = await agent.send(recreated.message, { onDelta });
+              const result = await (run as any).wait();
+              handleRunStatus(result);
+            } catch (err2) {
+              captureErrorType(err);  // 元の UnknownAgentError を errorType として保持
+              logError(log, err2, { phase: "create", retry: false });
+              safeEnqueue({ type: "error", error: { message: (err2 as Error).message } });
+              safeClose();
+            }
+            return;
+          }
+
           const decision = classifyError(err, { phase });
           logError(log, err, { phase, retry: decision.retry });
           if (!decision.retry) {
+            captureErrorType(err);
             safeEnqueue({ type: "error", error: { message: (err as Error).message } });
             safeClose();
           } else {
@@ -1473,9 +1619,13 @@ export function createStream(input: StreamProxyInput): {
             } else {
               try {
                 const run = await agent.send(message, { onDelta });
-                await (run as any).wait();
-                safeClose();
+                const result = await (run as any).wait();
+                // リトライ経路でも主経路と同じ status 分岐を行う（design §7.3）。
+                // status 破棄して即 safeClose すると status="error"/"cancelled" 時に
+                // consumer がエラー通知を受け取れずストリームが無言終了する。
+                handleRunStatus(result);
               } catch (err2) {
+                captureErrorType(err2);
                 safeEnqueue({ type: "error", error: { message: (err2 as Error).message } });
                 safeClose();
               }
@@ -1488,7 +1638,14 @@ export function createStream(input: StreamProxyInput): {
           // ガードに弾かれて未確定のまま finally に到達するのは consumer の
           // cancel() 直後のみで、この場合 cancel() 自体が "abort" を予約済み。
           // 理論上の保険としてフォールバックを "abort" にする。
-          donePromiseResolve({ finishReason: finishReason ?? "abort" });
+          // errorType は finishReason !== "stop" のときのみ付与する（"stop" 時に
+          // 残骸が残らないようガード）。abort 時も errorType は省略する。
+          const resolvedReason = finishReason ?? "abort";
+          donePromiseResolve(
+            resolvedReason === "error" && lastErrorType
+              ? { finishReason: resolvedReason, errorType: lastErrorType }
+              : { finishReason: resolvedReason },
+          );
         }
       })();
     },
@@ -1759,20 +1916,58 @@ async function runDoStream(opts: {
     messageToSend = t.latestUserMessage;
   } else {
     log.debug("cursor-provider: pool miss", { prefixHash: t.prefixHash.slice(0, 8) });
-    agent = await Agent.create({ apiKey, model: { id: modelId }, local: { cwd: process.cwd() } });
+    agent = await createAgentWithRetry({ apiKey, modelId, log });
     messageToSend = t.fullPromptOnMiss;
   }
 
   const wasMiss = !hit;
 
-  const { stream, done } = createStream({ agent, message: messageToSend, log, abortSignal: args.abortSignal });
+  // UnknownAgentError リトライで差し替えられた新 agent を保持する。
+  // stream-proxy の `recreateAgent` クロージャが side-effect で書き込み、
+  // done 解決時の pool 操作（rekey vs. put）を分岐するために参照する。
+  let replacedAgent: typeof agent | undefined;
 
-  done.then(async ({ finishReason }) => {
+  // pool ヒット経由のみ recreateAgent を提供する。pool ミス経由では
+  // 直前に Agent.create したばかりの新規 agent なので UnknownAgentError は
+  // 通常発生しない前提（design §6.2）。
+  // 新規 agent には先行会話の履歴が無いため、再送信メッセージは
+  // `latestUserMessage` ではなく `fullPromptOnMiss` を使う（design §5.3）。
+  const recreateAgent = hit
+    ? async () => {
+        // 古いプールエントリは確実に除去（5s タイムアウト付き agent.close 込み）。
+        await pool.delete(t.prefixHash, modelId, apiKey);
+        const fresh = await createAgentWithRetry({ apiKey, modelId, log });
+        replacedAgent = fresh;
+        return { agent: fresh, message: t.fullPromptOnMiss };
+      }
+    : undefined;
+
+  const { stream, done } = createStream({
+    agent,
+    message: messageToSend,
+    log,
+    abortSignal: args.abortSignal,
+    recreateAgent,
+  });
+
+  done.then(async ({ finishReason, errorType }) => {
     // 終端理由に応じて pool 操作を分岐する。`abortSignal.aborted` のみで判定
     // していた旧実装は status=error / cancelled / 例外経路を取りこぼし、
     // 異常状態の agent を pool.put / pool.rekey で次ターンに引き継いでしまう
     // 不具合があったため、createStream の解決値を契約として参照する。
     if (finishReason === "stop") {
+      if (replacedAgent) {
+        // UnknownAgentError リトライで agent が差し替わった場合は、新 agent を
+        // nextHash で登録する（pool.rekey は古いキーを既に削除済みなのでスキップ）。
+        // design §6.1 の "UnknownAgentError リトライ後の継続性維持" を実装。
+        await pool.put(t.nextHash, {
+          agent: replacedAgent,
+          lastUsedAt: Date.now(),
+          modelId,
+          apiKeyFingerprint: fingerprint,
+        });
+        return;
+      }
       if (wasMiss) {
         await pool.put(t.prefixHash, {
           agent,
@@ -1788,11 +1983,35 @@ async function runDoStream(opts: {
     // SDK 内部状態が破損している可能性がある。プール再利用を避けるため、
     // ヒット経由のエントリは pool.delete（5s タイムアウト付きで close）し、
     // ミス経由は pool 未登録なので agent.close を直接呼ぶ。
+    // errorType は記録のみ（pool 操作の分岐には使用しない）。
+    if (errorType) log.debug("cursor-provider: stream ended with errorType", { errorType });
+    if (replacedAgent) {
+      // UnknownAgentError リトライ後の失敗。新 agent は pool 未登録なので close のみ。
+      await (replacedAgent as any).close?.();
+      return;
+    }
     if (hit) await pool.delete(t.prefixHash, modelId, apiKey);
     else await (agent as any).close?.();
   }).catch((err) => logError(log, err, { phase: "post-stream" }));
 
   return { stream };
+}
+
+// `Agent.create` を呼び、NetworkError 等のリトライ可能例外は 1 回だけ
+// `classifyError({ phase: "create" })` の `delayMs` バックオフで再試行する。
+// design §7.1 / §6.2 ステップ 4 の create-phase リトライをここで吸収し、
+// stream-proxy 側からは「単一試行で成功 or 失敗」のシンプルな契約に保つ。
+async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log: Logger }) {
+  const { apiKey, modelId, log } = deps;
+  try {
+    return await Agent.create({ apiKey, model: { id: modelId }, local: { cwd: process.cwd() } });
+  } catch (err) {
+    const decision = classifyError(err, { phase: "create" });
+    logError(log, err, { phase: "create", retry: decision.retry });
+    if (!decision.retry) throw err;
+    await new Promise((r) => setTimeout(r, decision.delayMs));
+    return await Agent.create({ apiKey, model: { id: modelId }, local: { cwd: process.cwd() } });
+  }
 }
 ```
 

@@ -1392,6 +1392,24 @@ describe("stream-proxy", () => {
     expect(parts.some((p) => p.type === "finish" && p.finishReason === "abort")).toBe(true);
   });
 
+  it("createStream 開始時に既に abort 済みなら外部 abortSignal の listener を解除する", async () => {
+    // 早期 return パスは try/finally の外側で発生するため、明示的に
+    // removeEventListener しないと長命 abortSignal 上にリスナーが蓄積する
+    // （指摘#3 回帰テスト）。`abortSignal` をセッション横断で使い回すと
+    // 1 リクエスト = 1 リスナーで増え続けるため、添付/解除の対称性を検証する。
+    const ac = new AbortController();
+    ac.abort(); // createStream 呼出前に既に abort 済み
+    const removeSpy = vi.spyOn(ac.signal, "removeEventListener");
+    const agent = fakeAgent(async () => ({ status: "finished" }));
+    const { stream, done } = createStream({ agent, message: "m", log, abortSignal: ac.signal });
+    await collect(stream);
+    await expect(done).resolves.toMatchObject({ finishReason: "abort" });
+    // 外部 abortSignal に attach した onExternalAbort が解除されること
+    expect(removeSpy).toHaveBeenCalledWith("abort", expect.any(Function));
+    // agent.send は走らないこと（早期 return パスを通っている確認）
+    expect((agent as any).send).not.toHaveBeenCalled();
+  });
+
   it("TurnEnded 後の status=finished で重複 close されない (hasClosedStream ガード)", async () => {
     const agent = fakeAgent(async (onDelta) => {
       onDelta({ type: "turn-ended" });
@@ -1710,9 +1728,15 @@ export function createStream(input: StreamProxyInput): {
       internalAbort.signal.addEventListener("abort", onAbort);
 
       (async () => {
-        // 起動前に既に abort 済みの場合は早期終了。abort listener はまだ stream
-        // に attach 済みのため、ダウンストリームへの finish(abort) はそちらに委ねる。
+        // 起動前に既に abort 済みの場合は早期終了。
         if (internalAbort.signal.aborted) {
+          // 早期 return は try/finally の外側で発生するため、finally 経路の
+          // listener cleanup（internalAbort 上の onAbort / abortSignal 上の
+          // onExternalAbort）が走らずリークする。`abortSignal` が長命（セッション
+          // 単位など）だと createStream 呼出毎に onExternalAbort 参照が蓄積する
+          // ため、ここで明示的に両 listener を解除する。
+          internalAbort.signal.removeEventListener("abort", onAbort);
+          abortSignal?.removeEventListener("abort", onExternalAbort);
           // listener が未発火のケース（addEventListener 直前に既に aborted）に備え、
           // finish(abort) を 1 度だけ enqueue。`hasClosedStream` ガードで二重発火を防ぐ。
           setFinishReason("abort");
@@ -1889,7 +1913,7 @@ git checkout -b feature/phase3-task2_provider
 - [ ] **Step 2: 失敗するテスト作成 (`tests/provider.test.ts`)**
 
 ```ts
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { createProviderHook } from "../.opencode/plugins/cursor-provider/provider";
 import { createAgentPool } from "../.opencode/plugins/cursor-provider/agent-pool";
 import { createLogger } from "../.opencode/plugins/cursor-provider/logger";
@@ -1911,6 +1935,12 @@ vi.mock("@cursor/sdk", async () => ({
 const log = createLogger({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() });
 
 describe("createProviderHook.models()", () => {
+  // fake timer を使うテスト（list タイムアウト系）が assertion 失敗で
+  // `vi.useRealTimers()` まで到達しないと、後続テストが fake timer 環境のまま
+  // 走り setTimeout 系がハングする。`agent-pool.test.ts` と同じ
+  // beforeEach/afterEach パターンに統一して常にリセットする。
+  afterEach(() => vi.useRealTimers());
+
   it("Cursor.models.list 成功時に SDKModel を ModelV2 化して返す", async () => {
     const sdk = await import("@cursor/sdk");
     (sdk.Cursor.models.list as any).mockResolvedValue([
@@ -1954,6 +1984,9 @@ describe("createProviderHook.models()", () => {
 
   it("list 5s タイムアウトでフォールバック", async () => {
     vi.useFakeTimers();
+    // 後始末は describe 直下の `afterEach(() => vi.useRealTimers())` に委譲する。
+    // 末尾 `vi.useRealTimers()` を直接呼ばないのは、assertion 失敗時に到達せず
+    // 後続テストが fake timer のまま走ってハングするのを防ぐため。
     const sdk = await import("@cursor/sdk");
     (sdk.Cursor.models.list as any).mockImplementation(() => new Promise(() => {}));
     const hook = createProviderHook({
@@ -1967,7 +2000,6 @@ describe("createProviderHook.models()", () => {
     const r = await p;
     const keys = r instanceof Map ? [...r.keys()] : Object.keys(r);
     expect(keys.includes("composer-2")).toBe(true);
-    vi.useRealTimers();
   });
 });
 ```

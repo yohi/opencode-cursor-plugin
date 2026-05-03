@@ -327,9 +327,11 @@ export function logError(log: Logger, err: unknown, context: Record<string, unkn
 - OpenCode が渡す `AbortSignal` を監視
 - 発火時:
   1. onDelta ループから抜ける
-  2. **対象 agent の出自を問わず `agent.close()` を 5s タイムアウトで実行**:
-     - プールヒット経由なら `pool.delete(prefixHash, modelId, apiKey)` も併せて実行
-     - プールミス経由なら未登録のため `close` のみ
+  2. **出自に応じて agent をクローズ**（二重 close 防止のため経路ごとに責務を分離）:
+     - **プールヒット経由**: `pool.delete(prefixHash, modelId, apiKey)`
+       （§5.2 仕様により内部で `agent.close()` を 5s タイムアウト付きで実行）
+     - **プールミス経由**: `agent.close()` を 5s タイムアウトで直接実行
+       （プール未登録のため pool 操作不要）
   3. `safeClose()` で `controller.close()`
 
 > **設計判断**: キャンセル後の agent 再利用は行わない。Cursor SDK は `agent.send(message)` 呼出時点で内部履歴に message を記録するため、キャンセル後に再利用すると次ターンの `latestUserMessage` が SDK 側で二重記録され、会話コンテキストが汚染される。状態汚染回避を `Agent.create` コスト（数秒）節約より優先し、確実な破棄を選択する。次ターンは必ず §6.2 のプールミス経路を新規実行する。

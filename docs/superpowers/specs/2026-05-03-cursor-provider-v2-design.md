@@ -382,7 +382,7 @@ export function logError(log: Logger, err: unknown, context: Record<string, unkn
 | ファイル | 主要観点 |
 |---|---|
 | `tests/translator.test.ts` | 空履歴／履歴あり／連続 user message のハッシュ安定性、`prefixHash` と `nextHash` の分離、履歴分岐でハッシュ不一致、整形フォーマット、空 prompt や非対応ロールの拒否、**assistant メッセージを含む履歴で連続 2 ターンが同一プールキーで結ばれる（`turn1.nextHash === turn2.prefixHash`）**、**assistant 応答内容が変わっても user 列が同じならハッシュは変わらない（assistant 列がフィルタされている確認）**、末尾が user でない messages 配列を拒否 |
-| `tests/agent-pool.test.ts` | LRU 退避、`lastUsedAt` 更新、`rekey`、close 失敗時の warn、5s タイムアウト（fake timers）、apiKey 違いで別エントリ、キャンセル経路での暫定 `put(prefixHash)` 後に同 prefixHash で再取得可能 |
+| `tests/agent-pool.test.ts` | LRU 退避、`lastUsedAt` 更新、`rekey`、close 失敗時の warn、5s タイムアウト（fake timers）、apiKey 違いで別エントリ、**キャンセル経路で `agent.close()` が 5s タイムアウト付きで呼ばれ、プールには登録されないこと** |
 | `tests/stream-proxy.test.ts` | TextDelta → text-delta、Thinking → reasoning-delta、ToolCallStarted → 警告挿入 + warn（同 `toolCallId` で 1 回のみ）、`PartialToolCallUpdate` / `ToolCallCompletedUpdate` がドロップされ text-delta に流出しない、TurnEnded → finish、AbortSignal でクローズ、`run.status=error` で error パート enqueue + `controller.close()`（`controller.error` を呼ばない）、未知イベントが debug ログのみ、**1 chunk 配送後 (`hasEmittedDelta=true`) の NetworkError でリトライが発火せず error パートが流れる（重複防止）**、`hasEmittedDelta=false` 時の NetworkError ではリトライが 1 回発火してから配送が継続する、**`TurnEndedUpdate` 後に `run.wait()` が `finished` で解決しても `controller.enqueue` / `close` が二度呼ばれない（`hasClosedStream` ガード動作）**、**`safeEnqueue` が close 後の呼出を debug ログのみで握り潰す** |
 | `tests/errors.test.ts` | 各 Cursor 例外型のマッピング、`classifyError` の phase 別判定（NetworkError × `create` / `pre-stream` で `retry: true`、`in-stream` / `post-stream` で `retry: false`）、NetworkError リトライ 1 回上限、UnknownAgentError でプール除去 + リトライ後 `pool.put(nextHash)` 実行 |
 | `tests/auth.test.ts` | `ctx.auth` 優先、env フォールバック、両方欠落時の `undefined` |
@@ -409,7 +409,7 @@ export function logError(log: Logger, err: unknown, context: Record<string, unkn
 2. 連続ターンでプールヒット（差分送信 → `rekey`）
 3. 別会話を 8 件投入して LRU 退避を発火、最古 agent が `close()` される
 4. 退避された会話を再開 → 再ミス → 再生成
-5. キャンセル経路: ストリーム途中で `AbortSignal` 発火 → 暫定 `put(prefixHash)` → 次ターン同 prefixHash でヒット
+5. キャンセル経路: ストリーム途中で `AbortSignal` 発火 → `agent.close()`（5s timeout）→ プール未登録 → 次ターンは §6.2 プールミス経路で新規 `Agent.create`（**前ターンと別 agent インスタンスが生成されることを検証**）
 
 ### 8.6 E2E
 

@@ -769,14 +769,31 @@ function poolKey(fingerprint: string, modelId: string, hash: string): string {
   return `${fingerprint}:${modelId}:${hash}`;
 }
 
+// SDK 仕様 (`@cursor/sdk` の `SDKAgent`):
+//   - `close(): void`                           ← 同期。Promise を返さないため timeout と race できない。
+//   - `[Symbol.asyncDispose](): Promise<void>`  ← 非同期 cleanup。ハング対策の race 対象はこちら。
+// プールが多数の Agent をまとめて閉じる際に 1 件のハングで全体が止まらないよう、
+// 必ず `Symbol.asyncDispose` 側を timeout と race させる。`close()` は使用しない。
 async function closeWithTimeout(agent: SDKAgent, log: Logger): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<"timeout">((resolve) => {
+    timer = setTimeout(() => resolve("timeout"), CLOSE_TIMEOUT_MS);
+  });
   try {
-    await Promise.race([
-      agent.close?.(),
-      new Promise<void>((resolve) => setTimeout(resolve, CLOSE_TIMEOUT_MS)),
-    ]);
+    const disposed = agent[Symbol.asyncDispose]().then(() => "ok" as const);
+    const result = await Promise.race([disposed, timeoutPromise]);
+    if (result === "timeout") {
+      log.warn("cursor-provider: agent dispose timed out", {
+        timeoutMs: CLOSE_TIMEOUT_MS,
+      });
+    }
   } catch (err) {
-    log.warn("cursor-provider: agent.close failed", { errorType: (err as Error).constructor.name });
+    log.warn("cursor-provider: agent dispose failed", {
+      errorType: (err as Error).constructor.name,
+    });
+  } finally {
+    // race の勝敗に関わらずタイマーを解放（解放しないと event loop が残る）。
+    if (timer) clearTimeout(timer);
   }
 }
 

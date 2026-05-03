@@ -579,10 +579,12 @@ Phase 1 のユーティリティ群を利用するが、各 Task は互いに参
 **派生元:** `feature/phase2_state-layer__base`（独立タスク）
 
 **Files:**
+- Create: `.opencode/plugins/cursor-provider/agent-cleanup.ts`（agent dispose の共有ユーティリティ）
 - Create: `.opencode/plugins/cursor-provider/agent-pool.ts`
+- Create: `tests/agent-cleanup.test.ts`
 - Create: `tests/agent-pool.test.ts`
 
-**コンテキスト:** 設計書 §5.2 / §6.1〜6.4 を実装。LRU 上限 8 件、内部キーは `${apiKeyFingerprint}:${modelId}:${prefixHash}`。`put` で容量超過時に最古を `agent.close()`（5s タイムアウト）。`delete` で個別エントリ除去 + close。`closeAll` でプロセス終了時の一括クリーンアップ。
+**コンテキスト:** 設計書 §5.2 / §6.1〜6.4 を実装。LRU 上限 8 件、内部キーは `${apiKeyFingerprint}:${modelId}:${prefixHash}`。`put` で容量超過時 / 同一キー上書き時に displaced エントリを `disposeAgentSafely()`（5s タイムアウト）で確実に閉じる。`delete` で個別エントリ除去 + dispose。`closeAll` でプロセス終了時の一括クリーンアップ。dispose 関数は Task 3.2 (`provider.ts`) のエラー経路でも再利用するため、`agent-cleanup.ts` として別モジュール化する。
 
 - [ ] **Step 1: ブランチ作成**
 
@@ -593,7 +595,43 @@ git push -u origin feature/phase2_state-layer__base
 git checkout -b feature/phase2-task1_agent-pool
 ```
 
-- [ ] **Step 2: 失敗するテスト作成 (`tests/agent-pool.test.ts`)**
+- [ ] **Step 2-a: 失敗するテスト作成 (`tests/agent-cleanup.test.ts`)**
+
+```ts
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { disposeAgentSafely } from "../.opencode/plugins/cursor-provider/agent-cleanup";
+import { createLogger } from "../.opencode/plugins/cursor-provider/logger";
+
+const log = createLogger({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() });
+
+describe("disposeAgentSafely", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("正常系: agent[Symbol.asyncDispose]() を呼び await する", async () => {
+    const agent = { [Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined) } as any;
+    await disposeAgentSafely(agent, log);
+    expect(agent[Symbol.asyncDispose]).toHaveBeenCalledTimes(1);
+  });
+
+  it("dispose が 5s 超でハングしてもタイムアウトで戻る (resolves)", async () => {
+    const agent = { [Symbol.asyncDispose]: vi.fn(() => new Promise<void>(() => {})) } as any;
+    const p = disposeAgentSafely(agent, log);
+    vi.advanceTimersByTime(5_000);
+    await expect(p).resolves.toBeUndefined();
+    // タイムアウト時は warn が出ているべき
+    expect(log.warn).toHaveBeenCalled();
+  });
+
+  it("dispose が reject しても rethrow せず warn ログのみ", async () => {
+    const agent = { [Symbol.asyncDispose]: vi.fn().mockRejectedValue(new TypeError("boom")) } as any;
+    await expect(disposeAgentSafely(agent, log)).resolves.toBeUndefined();
+    expect(log.warn).toHaveBeenCalled();
+  });
+});
+```
+
+- [ ] **Step 2-b: 失敗するテスト作成 (`tests/agent-pool.test.ts`)**
 
 ```ts
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -611,8 +649,16 @@ const log = createLogger({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: 
 // 内部では複合キー `${fingerprint}:${modelId}:${hash}` で識別され、`tryGet` 側は
 // `fingerprintApiKey(apiKey)` を再計算してエントリを引くため、テストの
 // `apiKeyFingerprint` も `fingerprintApiKey(apiKey)` で揃える。
+// `disposeAgentSafely` (agent-cleanup.ts) は `agent[Symbol.asyncDispose]()` の
+// みを呼ぶため、mock も同名キーで spy を持たせる。pool / doStream のすべての
+// cleanup 経路がこの関数経由なので、テスト assertion は `[Symbol.asyncDispose]`
+// で統一する。`close` は SDK 仕様上の必須メンバなので型互換のために残しておく
+// （現実装からは呼ばれないが、将来 close 直接検証テストが増えた場合の備え）。
 const makeAgent = (apiKey = "key-original") => ({
-  agent: { close: vi.fn().mockResolvedValue(undefined) } as any,
+  agent: {
+    [Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+    close: vi.fn(),
+  } as any,
   lastUsedAt: Date.now(),
   modelId: "composer-2",
   apiKeyFingerprint: fingerprintApiKey(apiKey),
@@ -632,7 +678,7 @@ describe("AgentPool", () => {
     expect(got).toBeDefined();
   });
 
-  it("LRU 容量超過時、最古エントリを close する", async () => {
+  it("LRU 容量超過時、最古エントリを asyncDispose する", async () => {
     const pool = createAgentPool({ log, capacity: 2 });
     const a1 = makeAgent();
     const a2 = makeAgent();
@@ -640,13 +686,43 @@ describe("AgentPool", () => {
     await pool.put("h1", a1);
     await pool.put("h2", a2);
     await pool.put("h3", a3);
-    expect(a1.agent.close).toHaveBeenCalled();
+    expect(a1.agent[Symbol.asyncDispose]).toHaveBeenCalled();
   });
 
-  it("agent.close が 5s でタイムアウトしても put は完了する", async () => {
+  it("同一複合キーへの再 put: 旧 entry の agent を確実に dispose する", async () => {
+    // 並行 miss で同じ (fingerprint, modelId, nextHash) に対して 2 回 put される
+    // ケースの回帰テスト。旧実装は `map.set` が silent に上書きするだけで displaced
+    // agent を leak していた。pool.put は同一キーの旧 agent を dispose してから
+    // 新 agent を入れること。
+    const pool = createAgentPool({ log, capacity: 8 });
+    const apiKey = "k";
+    const a = makeAgent(apiKey);
+    const b = makeAgent(apiKey); // 同 apiKey/modelId → 同一複合キー
+    await pool.put("h1", a);
+    await pool.put("h1", b);
+    expect(a.agent[Symbol.asyncDispose]).toHaveBeenCalledTimes(1);
+    expect(b.agent[Symbol.asyncDispose]).not.toHaveBeenCalled();
+    // 取得すると新 entry (b) が返る
+    expect(pool.tryGet("h1", a.modelId, apiKey)?.agent).toBe(b.agent);
+  });
+
+  it("同一複合キーへの再 put で同一 agent インスタンスは dispose しない（自己 dispose 防止）", async () => {
+    // displace ロジックが `displaced.agent === entry.agent` を判定せず無条件に
+    // dispose すると、lastUsedAt 更新等の意図で同一 agent を put し直したケースで
+    // 動作中の agent を閉じてしまう。識別ガードの回帰テスト。
+    const pool = createAgentPool({ log, capacity: 8 });
+    const apiKey = "k";
+    const a = makeAgent(apiKey);
+    await pool.put("h1", a);
+    await pool.put("h1", a); // 同一インスタンスを再 put
+    expect(a.agent[Symbol.asyncDispose]).not.toHaveBeenCalled();
+  });
+
+  it("agent[Symbol.asyncDispose] が 5s でタイムアウトしても put は完了する", async () => {
     const pool = createAgentPool({ log, capacity: 1 });
     const stuck = makeAgent();
-    stuck.agent.close = vi.fn(() => new Promise(() => {}));
+    // SDK 仕様上 dispose は Promise<void> を返すので、ハング再現も同じ async シグネチャで作る。
+    stuck.agent[Symbol.asyncDispose] = vi.fn(() => new Promise<void>(() => {}));
     await pool.put("h1", stuck);
     const p = pool.put("h2", makeAgent());
     vi.advanceTimersByTime(5_000);
@@ -683,13 +759,13 @@ describe("AgentPool", () => {
     expect(pool.tryGet("next", b.modelId, apiKeyB)).toBeUndefined();
   });
 
-  it("delete で該当エントリ除去 + agent.close を 5s タイムアウト付きで実行", async () => {
+  it("delete で該当エントリ除去 + agent[Symbol.asyncDispose] を 5s タイムアウト付きで実行", async () => {
     const pool = createAgentPool({ log, capacity: 8 });
     const apiKey = "k";
     const a = makeAgent(apiKey);
     await pool.put("h1", a);
     await pool.delete("h1", a.modelId, apiKey);
-    expect(a.agent.close).toHaveBeenCalled();
+    expect(a.agent[Symbol.asyncDispose]).toHaveBeenCalled();
     expect(pool.tryGet("h1", a.modelId, apiKey)).toBeUndefined();
   });
 
@@ -713,15 +789,15 @@ describe("AgentPool", () => {
     expect(pool.tryGet("h1", b.modelId, apiKeyB)?.apiKeyFingerprint).toBe(b.apiKeyFingerprint);
   });
 
-  it("closeAll で全エントリの agent.close を呼ぶ", async () => {
+  it("closeAll で全エントリの agent[Symbol.asyncDispose] を呼ぶ", async () => {
     const pool = createAgentPool({ log, capacity: 8 });
     const a1 = makeAgent();
     const a2 = makeAgent();
     await pool.put("h1", a1);
     await pool.put("h2", a2);
     await pool.closeAll();
-    expect(a1.agent.close).toHaveBeenCalled();
-    expect(a2.agent.close).toHaveBeenCalled();
+    expect(a1.agent[Symbol.asyncDispose]).toHaveBeenCalled();
+    expect(a2.agent[Symbol.asyncDispose]).toHaveBeenCalled();
   });
 });
 ```
@@ -733,58 +809,34 @@ pnpm test -- tests/agent-pool.test.ts
 ```
 Expected: FAIL。
 
-- [ ] **Step 4: 実装作成 (`.opencode/plugins/cursor-provider/agent-pool.ts`)**
+- [ ] **Step 4-a: 実装作成 (`.opencode/plugins/cursor-provider/agent-cleanup.ts`)**
 
 ```ts
 import type { Agent as SDKAgent } from "@cursor/sdk";
 import type { Logger } from "./logger.js";
 
-export interface PooledAgent {
-  agent: SDKAgent;
-  lastUsedAt: number;
-  modelId: string;
-  apiKeyFingerprint: string;
-}
-
-export interface AgentPool {
-  tryGet(hash: string, modelId: string, apiKey: string): PooledAgent | undefined;
-  put(hash: string, agent: PooledAgent): Promise<void>;
-  // rekey は (fingerprint, modelId, oldHash) で一意に識別したエントリのみを移動する。
-  // 異なるユーザーが同一 prefixHash を持つケース（ハッシュ衝突）でも、他ユーザーの
-  // エントリを巻き込まないために fingerprint と modelId は必須。
-  rekey(fingerprint: string, modelId: string, oldHash: string, newHash: string): void;
-  delete(hash: string, modelId: string, apiKey: string): Promise<void>;
-  closeAll(): Promise<void>;
-}
-
-const CLOSE_TIMEOUT_MS = 5_000;
-
-import { createHash } from "node:crypto";
-
-export function fingerprintApiKey(apiKey: string): string {
-  return createHash("sha256").update(apiKey).digest("hex").slice(0, 8);
-}
-
-function poolKey(fingerprint: string, modelId: string, hash: string): string {
-  return `${fingerprint}:${modelId}:${hash}`;
-}
+export const DISPOSE_TIMEOUT_MS = 5_000;
 
 // SDK 仕様 (`@cursor/sdk` の `SDKAgent`):
 //   - `close(): void`                           ← 同期。Promise を返さないため timeout と race できない。
 //   - `[Symbol.asyncDispose](): Promise<void>`  ← 非同期 cleanup。ハング対策の race 対象はこちら。
-// プールが多数の Agent をまとめて閉じる際に 1 件のハングで全体が止まらないよう、
-// 必ず `Symbol.asyncDispose` 側を timeout と race させる。`close()` は使用しない。
-async function closeWithTimeout(agent: SDKAgent, log: Logger): Promise<void> {
+//
+// すべての agent cleanup 経路（pool eviction / pool delete / pool closeAll /
+// pool 同一キー displace / doStream エラー経路）はこの関数を経由する。これにより:
+//   1) ハング保護（5s タイムアウト）が一様に適用される
+//   2) SDK の close 仕様変更時の修正点が 1 箇所
+//   3) sync `close()` を使わず、必ず async `Symbol.asyncDispose` を使うポリシーを集約
+export async function disposeAgentSafely(agent: SDKAgent, log: Logger): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<"timeout">((resolve) => {
-    timer = setTimeout(() => resolve("timeout"), CLOSE_TIMEOUT_MS);
+    timer = setTimeout(() => resolve("timeout"), DISPOSE_TIMEOUT_MS);
   });
   try {
     const disposed = agent[Symbol.asyncDispose]().then(() => "ok" as const);
     const result = await Promise.race([disposed, timeoutPromise]);
     if (result === "timeout") {
       log.warn("cursor-provider: agent dispose timed out", {
-        timeoutMs: CLOSE_TIMEOUT_MS,
+        timeoutMs: DISPOSE_TIMEOUT_MS,
       });
     }
   } catch (err) {
@@ -795,6 +847,44 @@ async function closeWithTimeout(agent: SDKAgent, log: Logger): Promise<void> {
     // race の勝敗に関わらずタイマーを解放（解放しないと event loop が残る）。
     if (timer) clearTimeout(timer);
   }
+}
+```
+
+- [ ] **Step 4-b: 実装作成 (`.opencode/plugins/cursor-provider/agent-pool.ts`)**
+
+```ts
+import { createHash } from "node:crypto";
+import type { Agent as SDKAgent } from "@cursor/sdk";
+import type { Logger } from "./logger.js";
+import { disposeAgentSafely } from "./agent-cleanup.js";
+
+export interface PooledAgent {
+  agent: SDKAgent;
+  lastUsedAt: number;
+  modelId: string;
+  apiKeyFingerprint: string;
+}
+
+export interface AgentPool {
+  tryGet(hash: string, modelId: string, apiKey: string): PooledAgent | undefined;
+  // 同一複合キー (`fingerprint:modelId:hash`) に既存 entry が存在し、かつ
+  // それが新 entry とは異なる agent インスタンスである場合、旧 agent を
+  // `disposeAgentSafely` で確実に閉じてから新 entry を入れる。
+  put(hash: string, agent: PooledAgent): Promise<void>;
+  // rekey は (fingerprint, modelId, oldHash) で一意に識別したエントリのみを移動する。
+  // 異なるユーザーが同一 prefixHash を持つケース（ハッシュ衝突）でも、他ユーザーの
+  // エントリを巻き込まないために fingerprint と modelId は必須。
+  rekey(fingerprint: string, modelId: string, oldHash: string, newHash: string): void;
+  delete(hash: string, modelId: string, apiKey: string): Promise<void>;
+  closeAll(): Promise<void>;
+}
+
+export function fingerprintApiKey(apiKey: string): string {
+  return createHash("sha256").update(apiKey).digest("hex").slice(0, 8);
+}
+
+function poolKey(fingerprint: string, modelId: string, hash: string): string {
+  return `${fingerprint}:${modelId}:${hash}`;
 }
 
 export function createAgentPool(deps: { log: Logger; capacity: number }): AgentPool {
@@ -817,7 +907,7 @@ export function createAgentPool(deps: { log: Logger; capacity: number }): AgentP
         modelId: entry.modelId,
         apiKeyFingerprint: entry.apiKeyFingerprint,
       });
-      await closeWithTimeout(entry.agent, log);
+      await disposeAgentSafely(entry.agent, log);
     }
   };
 
@@ -832,7 +922,22 @@ export function createAgentPool(deps: { log: Logger; capacity: number }): AgentP
     },
     async put(hash, entry) {
       const k = poolKey(entry.apiKeyFingerprint, entry.modelId, hash);
+      // 同一複合キーへの再 put 時に旧 agent を leak させない。
+      // 並行 miss で 2 リクエストが同じ (fingerprint, modelId, nextHash) に
+      // put すると、`map.set` の silent 上書きで先発 agent が pool から外れた
+      // まま参照を失う。外で使われていない agent が残ると SDK 内部リソース
+      // (long-poll 接続等) が解放されず、leak になる。
+      // ただし `displaced.agent === entry.agent` の場合（lastUsedAt 更新目的の
+      // 同一インスタンス再 put など）は dispose してはならない。
+      const displaced = map.get(k);
       map.set(k, entry);
+      if (displaced && displaced.agent !== entry.agent) {
+        log.info("cursor-provider: pool displaced same-key entry", {
+          modelId: entry.modelId,
+          apiKeyFingerprint: entry.apiKeyFingerprint,
+        });
+        await disposeAgentSafely(displaced.agent, log);
+      }
       await evictIfNeeded();
     },
     rekey(fingerprint, modelId, oldHash, newHash) {
@@ -849,12 +954,12 @@ export function createAgentPool(deps: { log: Logger; capacity: number }): AgentP
       const entry = map.get(k);
       if (!entry) return;
       map.delete(k);
-      await closeWithTimeout(entry.agent, log);
+      await disposeAgentSafely(entry.agent, log);
     },
     async closeAll() {
       const entries = [...map.values()];
       map.clear();
-      await Promise.allSettled(entries.map((e) => closeWithTimeout(e.agent, log)));
+      await Promise.allSettled(entries.map((e) => disposeAgentSafely(e.agent, log)));
     },
   };
 }
@@ -863,7 +968,7 @@ export function createAgentPool(deps: { log: Logger; capacity: number }): AgentP
 - [ ] **Step 5: テスト通過確認**
 
 ```bash
-pnpm test -- tests/agent-pool.test.ts
+pnpm test -- tests/agent-cleanup.test.ts tests/agent-pool.test.ts
 pnpm typecheck
 ```
 Expected: PASS。
@@ -871,17 +976,23 @@ Expected: PASS。
 - [ ] **Step 6: コミット + Draft PR (→ Phase 2 base)**
 
 ```bash
-git add .opencode/plugins/cursor-provider/agent-pool.ts tests/agent-pool.test.ts
-git commit -m "feat(cursor-provider): LRU AgentPool (上限8 / close 5s timeout)"
+git add \
+  .opencode/plugins/cursor-provider/agent-cleanup.ts \
+  .opencode/plugins/cursor-provider/agent-pool.ts \
+  tests/agent-cleanup.test.ts \
+  tests/agent-pool.test.ts
+git commit -m "feat(cursor-provider): agent-cleanup ユーティリティ + LRU AgentPool"
 git push -u origin feature/phase2-task1_agent-pool
 gh pr create --draft --base feature/phase2_state-layer__base \
-  --title "feat(cursor-provider): agent-pool モジュール (LRU + close timeout)" \
+  --title "feat(cursor-provider): agent-cleanup + agent-pool (LRU + dispose timeout)" \
   --body "## Summary
-- LRU 容量 8、close 5s timeout、apiKey fingerprint 識別
+- 共有 dispose ユーティリティ (5s timeout) を agent-cleanup.ts へ集約
+- LRU 容量 8、apiKey fingerprint 識別、同一キー displace 時に旧 agent dispose
 - delete / rekey / closeAll サポート
 
 ## Test plan
-- [ ] tests/agent-pool.test.ts 全 PASS"
+- [ ] tests/agent-cleanup.test.ts 全 PASS
+- [ ] tests/agent-pool.test.ts 全 PASS（同一キー再 put / 自己 dispose 防止 含む）"
 ```
 
 ---
@@ -1580,7 +1691,7 @@ export function createStream(input: StreamProxyInput): {
           // `{ signal }` オプションを公式サポートした時点で追加する（現状 SDK 仕様
           // 未確認のため未渡し）。現実装では abort listener 経由でダウンストリームを
           // 即時クローズし、上位の `runDoStream` 側で `done` の解決値に含まれる
-          // `finishReason` に基づき pool.delete / agent.close を実行することで
+          // `finishReason` に基づき pool.delete / disposeAgentSafely を実行することで
           // SDK 側の継続実行による副作用を抑える。
           const run = await agent.send(message, { onDelta });
           const result = await (run as any).wait();
@@ -1717,7 +1828,7 @@ gh pr create --draft --base feature/phase3_provider-integration__base \
 - Create: `.opencode/plugins/cursor-provider/provider.ts`
 - Create: `tests/provider.test.ts`
 
-**コンテキスト:** 設計書 §5.4 / §6.2 / §6.3。`createProviderHook` が `models()` で `Cursor.models.list({ apiKey })` を 5s タイムアウトで呼び、失敗時は静的フォールバック。各モデルの `doStream` 実装は `translator → pool.tryGet → Agent.create → stream-proxy.createStream` の合成。
+**コンテキスト:** 設計書 §5.4 / §6.2 / §6.3。`createProviderHook` が `models()` で `Cursor.models.list({ apiKey })` を 5s タイムアウトで呼び、失敗時は静的フォールバック。各モデルの `doStream` 実装は `translator → pool.tryGet → Agent.create → stream-proxy.createStream` の合成。エラー経路の agent cleanup は Task 2.1 で作成した `agent-cleanup.ts` の `disposeAgentSafely` を再利用する（pool 経由 / 非 pool いずれも同関数を経由してハング保護を一様適用）。
 
 - [ ] **Step 1: ブランチ作成（直前 Task から）**
 
@@ -1822,6 +1933,7 @@ import type { ProviderHook, ProviderHookContext } from "@opencode-ai/plugin";
 import type { Logger } from "./logger.js";
 import type { AgentPool } from "./agent-pool.js";
 import { fingerprintApiKey } from "./agent-pool.js";
+import { disposeAgentSafely } from "./agent-cleanup.js";
 import { translate } from "./translator.js";
 import { createStream } from "./stream-proxy.js";
 import { STATIC_FALLBACK_MODELS, makeModelMeta } from "./models.js";
@@ -1951,7 +2063,8 @@ async function runDoStream(opts: {
   // `latestUserMessage` ではなく `fullPromptOnMiss` を使う（design §5.3）。
   const recreateAgent = hit
     ? async () => {
-        // 古いプールエントリは確実に除去（5s タイムアウト付き agent.close 込み）。
+        // 古いプールエントリは確実に除去（pool.delete 内部で disposeAgentSafely
+        // 経由 = 5s タイムアウト付き asyncDispose）。
         await pool.delete(t.prefixHash, modelId, apiKey);
         const fresh = await createAgentWithRetry({ apiKey, modelId, log });
         replacedAgent = fresh;
@@ -1986,29 +2099,42 @@ async function runDoStream(opts: {
         return;
       }
       if (wasMiss) {
-        await pool.put(t.prefixHash, {
+        // miss 経路は最初から `nextHash` に直接 put する（design §6.2 step 6-a）。
+        // 旧実装は `await pool.put(prefixHash) → rekey(prefixHash → nextHash)` の
+        // 二段階だったが、`await pool.put` 中の event-loop yield 中に他リクエストが
+        // `tryGet(prefixHash)` で中途状態の agent を掴み、続く rekey で削除されて
+        // 別リクエストの `pool.delete(prefixHash)` が no-op になる race window が
+        // 存在した。直接 `nextHash` に登録すれば prefixHash が一時的に露出することは
+        // ない（既存の同一 prefixHash エントリは別ユーザー/別前回ターンのものなので
+        // ここでは触らない）。
+        await pool.put(t.nextHash, {
           agent,
           lastUsedAt: Date.now(),
           modelId,
           apiKeyFingerprint: fingerprint,
         });
+      } else {
+        // hit 経路は前ターン末で nextHash に置かれたエントリを今ターンの prefixHash で
+        // 引いたケース。今ターン末はそれを今ターンの nextHash へ移すだけで良い。
+        pool.rekey(fingerprint, modelId, t.prefixHash, t.nextHash);
       }
-      pool.rekey(fingerprint, modelId, t.prefixHash, t.nextHash);
       return;
     }
     // abort / error: agent は既に部分的にメッセージを受信／中断済みで、
     // SDK 内部状態が破損している可能性がある。プール再利用を避けるため、
-    // ヒット経由のエントリは pool.delete（5s タイムアウト付きで close）し、
-    // ミス経由は pool 未登録なので agent.close を直接呼ぶ。
+    // ヒット経由のエントリは pool.delete（内部で disposeAgentSafely 経由）し、
+    // ミス経由 / replacedAgent は pool 未登録なので disposeAgentSafely を直接呼ぶ。
+    // SDK 仕様上 `close()` は同期 void なので timeout 保護にならない。エラー経路
+    // でも一様に asyncDispose + 5s timeout の `disposeAgentSafely` を使う。
     // errorType は記録のみ（pool 操作の分岐には使用しない）。
     if (errorType) log.debug("cursor-provider: stream ended with errorType", { errorType });
     if (replacedAgent) {
-      // UnknownAgentError リトライ後の失敗。新 agent は pool 未登録なので close のみ。
-      await (replacedAgent as any).close?.();
+      // UnknownAgentError リトライ後の失敗。新 agent は pool 未登録。
+      await disposeAgentSafely(replacedAgent, log);
       return;
     }
     if (hit) await pool.delete(t.prefixHash, modelId, apiKey);
-    else await (agent as any).close?.();
+    else await disposeAgentSafely(agent, log);
   }).catch((err) => logError(log, err, { phase: "post-stream" }));
 
   return { stream };
@@ -2235,13 +2361,18 @@ vi.mock("@cursor/sdk", async () => {
     Cursor: { models: { list: vi.fn().mockResolvedValue([{ id: "composer-2", name: "C2", contextWindow: 200000 }]) } },
     Agent: {
       create: vi.fn(async () => {
+        // SDK 仕様: `close(): void` は同期 / `[Symbol.asyncDispose](): Promise<void>` は非同期。
+        // プール経由の cleanup は asyncDispose 側を使うため spy はそちらに置く。
+        // close は doStream の miss-error 経路 (`(agent as any).close?.()`) で
+        // optional chaining 越しに呼ばれる可能性があるので no-op 互換のため残す。
         const a = {
           send: vi.fn(async (_m: string, opts: any) => {
             opts.onDelta({ type: "text-delta", text: "hello" });
             opts.onDelta({ type: "turn-ended" });
             return { wait: async () => ({ status: "finished" }) };
           }),
-          close: vi.fn().mockResolvedValue(undefined),
+          [Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+          close: vi.fn(),
           _id: agents.length,
         };
         agents.push(a);
@@ -2312,7 +2443,7 @@ describe("integration: provider-flow", () => {
     }
     const sdk = await import("@cursor/sdk");
     const agents = (sdk as any).__agents;
-    expect(agents[0].close).toHaveBeenCalled();
+    expect(agents[0][Symbol.asyncDispose]).toHaveBeenCalled();
   });
 
   it("キャンセル後の次ターンで前ターンと別 agent が生成される", async () => {

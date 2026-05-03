@@ -668,11 +668,11 @@ describe("AgentPool", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it("tryGet ヒット時に lastUsedAt が更新される", () => {
+  it("tryGet ヒット時に lastUsedAt が更新される", async () => {
     const pool = createAgentPool({ log, capacity: 8 });
     const apiKey = "key-original";
     const a = makeAgent(apiKey);
-    pool.put("h1", a);
+    await pool.put("h1", a);
     vi.advanceTimersByTime(1000);
     const got = pool.tryGet("h1", a.modelId, apiKey);
     expect(got).toBeDefined();
@@ -729,17 +729,17 @@ describe("AgentPool", () => {
     await expect(p).resolves.toBeUndefined();
   });
 
-  it("rekey で旧キーが無効化、新キーで取れる", () => {
+  it("rekey で旧キーが無効化、新キーで取れる", async () => {
     const pool = createAgentPool({ log, capacity: 8 });
     const apiKey = "key-original";
     const a = makeAgent(apiKey);
-    pool.put("old", a);
+    await pool.put("old", a);
     pool.rekey(a.apiKeyFingerprint, a.modelId, "old", "new");
     expect(pool.tryGet("old", a.modelId, apiKey)).toBeUndefined();
     expect(pool.tryGet("new", a.modelId, apiKey)).toBeDefined();
   });
 
-  it("rekey: 別 fingerprint の同一 prefixHash エントリは巻き込まれない", () => {
+  it("rekey: 別 fingerprint の同一 prefixHash エントリは巻き込まれない", async () => {
     // ハッシュ衝突回帰テスト: 異なる fingerprint で同じ prefixHash を put した状態で
     // 一方を rekey しても、もう一方は元の prefixHash で残り続ける。
     const pool = createAgentPool({ log, capacity: 8 });
@@ -747,8 +747,8 @@ describe("AgentPool", () => {
     const apiKeyB = "user-b";
     const a = makeAgent(apiKeyA);
     const b = makeAgent(apiKeyB);
-    pool.put("shared", a);
-    pool.put("shared", b);
+    await pool.put("shared", a);
+    await pool.put("shared", b);
 
     pool.rekey(a.apiKeyFingerprint, a.modelId, "shared", "next");
 
@@ -774,14 +774,14 @@ describe("AgentPool", () => {
     await expect(pool.delete("missing", "m", "k")).resolves.toBeUndefined();
   });
 
-  it("apiKey が異なれば別エントリとして扱う", () => {
+  it("apiKey が異なれば別エントリとして扱う", async () => {
     const pool = createAgentPool({ log, capacity: 8 });
     const apiKeyA = "key-a";
     const apiKeyB = "key-b";
     const a = makeAgent(apiKeyA);
-    pool.put("h1", a);
+    await pool.put("h1", a);
     const b = makeAgent(apiKeyB);
-    pool.put("h1", b);
+    await pool.put("h1", b);
     expect(pool.tryGet("h1", a.modelId, apiKeyA)).toBeDefined();
     expect(pool.tryGet("h1", b.modelId, apiKeyB)).toBeDefined();
     // 識別は複合キーで行うので A の apiKey で B の prefixHash は引けない（同 hash でも別エントリ）

@@ -283,10 +283,17 @@ export function logError(log: Logger, err: unknown, context: Record<string, unkn
 ### 6.4 プロセス終了時のクリーンアップ
 
 ```text
-1. プラグイン初期化時に process.on("beforeExit"/"SIGINT"/"SIGTERM") をフック
+1. プラグイン初期化時に process.once("beforeExit"/"SIGINT"/"SIGTERM") をフック
+   （once により再 raise 時の自己再帰呼び出しを防止）
 2. agent-pool.closeAll() を Promise.allSettled + 5s 全体タイムアウトで実行
 3. 失敗は log.warn のみ（ブロックしない）
+4. シグナル経路 (SIGINT/SIGTERM) のみ、クリーンアップ完了後に
+   process.kill(process.pid, signal) で同シグナルを再 raise し、
+   他リスナー / Node デフォルト終了動作に制御を返す
+   （beforeExit 経路では Node が自然終了するため不要）
 ```
+
+> **背景**: Node.js では `SIGINT`/`SIGTERM` にリスナーを登録するとデフォルト終了動作が抑制されるため、明示的な終了処理を行わないとプロセスがハングし Ctrl+C が効かなくなる。`process.exit()` 直書きは OpenCode 本体や他プラグインのシグナルハンドラを奪うリスクがあるため、`process.kill(process.pid, signal)` で再 raise する方式を採用する。
 
 ## 7. エラーハンドリング
 

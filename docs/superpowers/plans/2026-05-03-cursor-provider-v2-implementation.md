@@ -1505,6 +1505,41 @@ describe("stream-proxy", () => {
     await expect(done).resolves.toEqual({ finishReason: "error", errorType: "UnknownAgentError" });
   });
 
+  it("UnknownAgentError + recreateAgent 実行中に abort されたら新 agent.send は呼ばれず finishReason='abort' で終端する", async () => {
+    // recreateAgent() は pool.delete + Agent.create を含み所要時間が長くなり得る。
+    // その間の abort は NetworkError バックオフ後と同様に send をスキップして
+    // 早期終了し、孤立 run の登録 / 不要な API 消費を防ぐ（指摘#3 回帰テスト）。
+    const { UnknownAgentError } = await import("@cursor/sdk");
+    const err = new UnknownAgentError("agent gone");
+    const oldAgent = { send: vi.fn(async () => { throw err; }), close: vi.fn() } as any;
+    const ac = new AbortController();
+    const newAgent = fakeAgent(async (onDelta) => {
+      onDelta({ type: "text-delta", text: "should-not-appear" });
+      onDelta({ type: "turn-ended" });
+      return { status: "finished" };
+    });
+    // recreateAgent 実行中に abort をシミュレート（呼出後に signal を立てる）
+    const recreateAgent = vi.fn(async () => {
+      ac.abort();
+      return { agent: newAgent, message: "full-prompt" };
+    });
+    const { stream, done } = createStream({
+      agent: oldAgent,
+      message: "m",
+      log,
+      abortSignal: ac.signal,
+      recreateAgent,
+    });
+    const parts = await collect(stream);
+    expect(recreateAgent).toHaveBeenCalledTimes(1);
+    // 新 agent.send は呼ばれないこと
+    expect(newAgent.send).not.toHaveBeenCalled();
+    // finishReason は abort、text-delta は流れないこと
+    expect(parts.some((p) => p.type === "text-delta")).toBe(false);
+    expect(parts.some((p) => p.type === "finish" && p.finishReason === "abort")).toBe(true);
+    await expect(done).resolves.toMatchObject({ finishReason: "abort" });
+  });
+
   it("UnknownAgentError + recreateAgent なし: リトライせず error パートを流す", async () => {
     const { UnknownAgentError } = await import("@cursor/sdk");
     const err = new UnknownAgentError("agent gone");
@@ -1715,6 +1750,20 @@ export function createStream(input: StreamProxyInput): {
             try {
               const recreated = await recreateAgent();
               agent = recreated.agent;
+              // recreateAgent() は pool.delete (最大 5s timeout) + Agent.create
+              // (NetworkError 時 500ms backoff で 1 回リトライ) を含み所要時間が
+              // 数秒に達し得る。その間にユーザーが abort した場合、SDK が
+              // `agent.send` への signal 引き渡しを公式サポートしていない現状仕様
+              // 下では send 完走まで止まらないため、ここでガードして不要な SDK
+              // 実行（孤立 run の登録 / API 消費）を避ける。NetworkError バック
+              // オフ後の abort チェック（後段）と対称な実装。新 agent は呼出側
+              // (provider.ts) の `replacedAgent` クロージャに記録済みなので、
+              // done 解決時に `disposeAgentSafely(replacedAgent)` でクリーンアップされる。
+              if (internalAbort.signal.aborted) {
+                safeEnqueue({ type: "finish", finishReason: "abort" });
+                safeClose();
+                return;
+              }
               const run = await agent.send(recreated.message, { onDelta });
               const result = await (run as any).wait();
               handleRunStatus(result);

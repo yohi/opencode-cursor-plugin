@@ -597,7 +597,11 @@ git checkout -b feature/phase2-task1_agent-pool
 
 ```ts
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { createAgentPool, type PooledAgent } from "../.opencode/plugins/cursor-provider/agent-pool";
+import {
+  createAgentPool,
+  fingerprintApiKey,
+  type PooledAgent,
+} from "../.opencode/plugins/cursor-provider/agent-pool";
 import { createLogger } from "../.opencode/plugins/cursor-provider/logger";
 
 const log = createLogger({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() });
@@ -646,10 +650,36 @@ describe("AgentPool", () => {
   it("rekey で旧キーが無効化、新キーで取れる", () => {
     const pool = createAgentPool({ log, capacity: 8 });
     const a = makeAgent();
+    // makeAgent() は apiKeyFingerprint = "abcd1234" を返す。tryGet 側は apiKey から
+    // fingerprint を再算出するため、テストでも同じ fingerprint を生成する apiKey を渡す。
+    const apiKey = "key-original";
+    a.apiKeyFingerprint = fingerprintApiKey(apiKey);
     pool.put("old", a);
-    pool.rekey("old", "new");
-    expect(pool.tryGet("old", a.modelId, "k")).toBeUndefined();
-    expect(pool.tryGet("new", a.modelId, "k")).toBeDefined();
+    pool.rekey(a.apiKeyFingerprint, a.modelId, "old", "new");
+    expect(pool.tryGet("old", a.modelId, apiKey)).toBeUndefined();
+    expect(pool.tryGet("new", a.modelId, apiKey)).toBeDefined();
+  });
+
+  it("rekey: 別 fingerprint の同一 prefixHash エントリは巻き込まれない", () => {
+    // ハッシュ衝突回帰テスト: 異なる fingerprint で同じ prefixHash を put した状態で
+    // 一方を rekey しても、もう一方は元の prefixHash で残り続ける。
+    const pool = createAgentPool({ log, capacity: 8 });
+    const apiKeyA = "user-a";
+    const apiKeyB = "user-b";
+    const a = makeAgent();
+    a.apiKeyFingerprint = fingerprintApiKey(apiKeyA);
+    const b = makeAgent();
+    b.apiKeyFingerprint = fingerprintApiKey(apiKeyB);
+    pool.put("shared", a);
+    pool.put("shared", b);
+
+    pool.rekey(a.apiKeyFingerprint, a.modelId, "shared", "next");
+
+    expect(pool.tryGet("next", a.modelId, apiKeyA)).toBeDefined();
+    expect(pool.tryGet("shared", a.modelId, apiKeyA)).toBeUndefined();
+    // B 側は影響を受けない
+    expect(pool.tryGet("shared", b.modelId, apiKeyB)).toBeDefined();
+    expect(pool.tryGet("next", b.modelId, apiKeyB)).toBeUndefined();
   });
 
   it("delete で該当エントリ除去 + agent.close を 5s タイムアウト付きで実行", async () => {
@@ -713,7 +743,10 @@ export interface PooledAgent {
 export interface AgentPool {
   tryGet(hash: string, modelId: string, apiKey: string): PooledAgent | undefined;
   put(hash: string, agent: PooledAgent): Promise<void>;
-  rekey(oldHash: string, newHash: string): void;
+  // rekey は (fingerprint, modelId, oldHash) で一意に識別したエントリのみを移動する。
+  // 異なるユーザーが同一 prefixHash を持つケース（ハッシュ衝突）でも、他ユーザーの
+  // エントリを巻き込まないために fingerprint と modelId は必須。
+  rekey(fingerprint: string, modelId: string, oldHash: string, newHash: string): void;
   delete(hash: string, modelId: string, apiKey: string): Promise<void>;
   closeAll(): Promise<void>;
 }
@@ -743,8 +776,11 @@ async function closeWithTimeout(agent: SDKAgent, log: Logger): Promise<void> {
 
 export function createAgentPool(deps: { log: Logger; capacity: number }): AgentPool {
   const { log, capacity } = deps;
+  // 内部ストアはフルキー（fingerprint:modelId:prefixHash）で一意。
+  // 旧実装の `hashToKey` は prefixHash 単独をキーにしていたため、異なる
+  // fingerprint で同一 prefixHash を put すると後勝ちで上書きされ、rekey が
+  // 別ユーザーの Agent を移動してしまう不具合があった。複合キーのみで管理する。
   const map = new Map<string, PooledAgent>();
-  const hashToKey = new Map<string, string>();
 
   const evictIfNeeded = async () => {
     while (map.size > capacity) {
@@ -754,7 +790,6 @@ export function createAgentPool(deps: { log: Logger; capacity: number }): AgentP
       if (!oldest) break;
       const [k, entry] = oldest;
       map.delete(k);
-      for (const [h, kk] of hashToKey) if (kk === k) hashToKey.delete(h);
       log.info("cursor-provider: pool eviction", {
         modelId: entry.modelId,
         apiKeyFingerprint: entry.apiKeyFingerprint,
@@ -775,19 +810,15 @@ export function createAgentPool(deps: { log: Logger; capacity: number }): AgentP
     async put(hash, entry) {
       const k = poolKey(entry.apiKeyFingerprint, entry.modelId, hash);
       map.set(k, entry);
-      hashToKey.set(hash, k);
       await evictIfNeeded();
     },
-    rekey(oldHash, newHash) {
-      const k = hashToKey.get(oldHash);
-      if (!k) return;
-      const entry = map.get(k);
+    rekey(fingerprint, modelId, oldHash, newHash) {
+      const oldKey = poolKey(fingerprint, modelId, oldHash);
+      const entry = map.get(oldKey);
       if (!entry) return;
-      const newKey = poolKey(entry.apiKeyFingerprint, entry.modelId, newHash);
-      map.delete(k);
+      const newKey = poolKey(fingerprint, modelId, newHash);
+      map.delete(oldKey);
       map.set(newKey, entry);
-      hashToKey.delete(oldHash);
-      hashToKey.set(newHash, newKey);
     },
     async delete(hash, modelId, apiKey) {
       const fp = fingerprintApiKey(apiKey);
@@ -795,13 +826,11 @@ export function createAgentPool(deps: { log: Logger; capacity: number }): AgentP
       const entry = map.get(k);
       if (!entry) return;
       map.delete(k);
-      hashToKey.delete(hash);
       await closeWithTimeout(entry.agent, log);
     },
     async closeAll() {
       const entries = [...map.values()];
       map.clear();
-      hashToKey.clear();
       await Promise.allSettled(entries.map((e) => closeWithTimeout(e.agent, log)));
     },
   };
@@ -1224,7 +1253,30 @@ describe("stream-proxy", () => {
     });
     const { stream, done } = createStream({ agent, message: "m", log });
     await collect(stream);
-    await expect(done).resolves.toBeUndefined();
+    await expect(done).resolves.toEqual({ finishReason: "stop" });
+  });
+
+  it("done は status=error 経路で finishReason='error' を解決する", async () => {
+    const agent = fakeAgent(async () => ({ status: "error" }));
+    const { stream, done } = createStream({ agent, message: "m", log });
+    await collect(stream);
+    await expect(done).resolves.toEqual({ finishReason: "error" });
+  });
+
+  it("ReadableStream の cancel() は内部 abort 経路に集約され done は finishReason='abort' を解決する", async () => {
+    let releaseAgent!: () => void;
+    const agentReleased = new Promise<void>((r) => { releaseAgent = r; });
+    const agent = fakeAgent(async () => {
+      // consumer の cancel() を待ってから返す: cancel() が internalAbort を
+      // 発火させて IIFE の早期終了パスへ合流することを検証する。
+      await agentReleased;
+      return { status: "cancelled" };
+    });
+    const { stream, done } = createStream({ agent, message: "m", log });
+    const reader = stream.getReader();
+    await reader.cancel();
+    releaseAgent();
+    await expect(done).resolves.toEqual({ finishReason: "abort" });
   });
 
   it("hasEmittedDelta=true 時の NetworkError はリトライ発火せず error パートを流す", async () => {
@@ -1277,15 +1329,31 @@ export interface StreamProxyInput {
 const TOOL_WARNING = (name: string) =>
   `⚠️ [cursor-provider] Cursor agent attempted to use tool: ${name}. Pure LLM mode is in effect; the tool call is surfaced for visibility but not executed by OpenCode.`;
 
+export type StreamFinishReason = "stop" | "abort" | "error";
+
 export function createStream(input: StreamProxyInput): {
   stream: ReadableStream<any>;
-  done: Promise<void>;
+  done: Promise<{ finishReason: StreamFinishReason }>;
 } {
   const { agent, message, log, abortSignal } = input;
   let hasClosedStream = false;
   let hasEmittedDelta = false;
+  // 終端理由は最初に確定したものを採用する（`safeClose` と同じ "prefer-first" 規則）。
+  // 後続の異常系イベントが正常終了のレポートを上書きしてしまうのを防ぐ。
+  let finishReason: StreamFinishReason | null = null;
   const warnedToolCallIds = new Set<string>();
   let controller!: ReadableStreamDefaultController<any>;
+
+  // 内部 AbortController: 外部 abortSignal と consumer の cancel() を集約する。
+  // IIFE のアボート判定は内部シグナルのみ参照し、cancel() からの早期終了経路を
+  // 外部 abort と同じロジックで扱う。
+  const internalAbort = new AbortController();
+  const onExternalAbort = () => internalAbort.abort();
+  abortSignal?.addEventListener("abort", onExternalAbort);
+
+  const setFinishReason = (reason: StreamFinishReason) => {
+    if (finishReason === null) finishReason = reason;
+  };
 
   const safeEnqueue = (part: any) => {
     if (hasClosedStream) {
@@ -1293,6 +1361,8 @@ export function createStream(input: StreamProxyInput): {
       return;
     }
     if (part.type === "text-delta" || part.type === "reasoning-delta") hasEmittedDelta = true;
+    if (part.type === "finish") setFinishReason(part.finishReason);
+    if (part.type === "error") setFinishReason("error");
     controller.enqueue(part);
   };
   const safeClose = () => {
@@ -1332,21 +1402,41 @@ export function createStream(input: StreamProxyInput): {
     }
   };
 
-  let donePromiseResolve!: () => void;
-  const done = new Promise<void>((r) => { donePromiseResolve = r; });
+  let donePromiseResolve!: (v: { finishReason: StreamFinishReason }) => void;
+  const done = new Promise<{ finishReason: StreamFinishReason }>((r) => {
+    donePromiseResolve = r;
+  });
 
   const stream = new ReadableStream<any>({
     start(c) {
       controller = c;
       const onAbort = () => {
         log.warn("stream-proxy: abort signal received");
+        setFinishReason("abort");
         safeEnqueue({ type: "finish", finishReason: "abort" });
         safeClose();
       };
-      abortSignal?.addEventListener("abort", onAbort);
+      internalAbort.signal.addEventListener("abort", onAbort);
 
       (async () => {
+        // 起動前に既に abort 済みの場合は早期終了。abort listener はまだ stream
+        // に attach 済みのため、ダウンストリームへの finish(abort) はそちらに委ねる。
+        if (internalAbort.signal.aborted) {
+          // listener が未発火のケース（addEventListener 直前に既に aborted）に備え、
+          // finish(abort) を 1 度だけ enqueue。`hasClosedStream` ガードで二重発火を防ぐ。
+          setFinishReason("abort");
+          safeEnqueue({ type: "finish", finishReason: "abort" });
+          safeClose();
+          donePromiseResolve({ finishReason: finishReason ?? "abort" });
+          return;
+        }
         try {
+          // NOTE: `agent.send` への AbortSignal 引き渡しは @cursor/sdk が
+          // `{ signal }` オプションを公式サポートした時点で追加する（現状 SDK 仕様
+          // 未確認のため未渡し）。現実装では abort listener 経由でダウンストリームを
+          // 即時クローズし、上位の `runDoStream` 側で `done` の解決値に含まれる
+          // `finishReason` に基づき pool.delete / agent.close を実行することで
+          // SDK 側の継続実行による副作用を抑える。
           const run = await agent.send(message, { onDelta });
           const result = await (run as any).wait();
           if (result.status === "finished") {
@@ -1372,23 +1462,46 @@ export function createStream(input: StreamProxyInput): {
           } else {
             // retry handling delegated to caller for create phase; here in pre-stream we just retry once
             await new Promise((r) => setTimeout(r, decision.delayMs));
-            try {
-              const run = await agent.send(message, { onDelta });
-              await (run as any).wait();
+            // バックオフ中にユーザーが abort した場合はリトライをスキップして終了。
+            // ここで早期 return しないと、SDK の `agent.send` に signal が渡せない
+            // 現状仕様（前述 NOTE 参照）下でリトライ呼出が完走するまで止まらず、
+            // 不要なリソース消費とログノイズの原因になる。consumer 側の cancel()
+            // 経路も `internalAbort` 経由でここを通る。
+            if (internalAbort.signal.aborted) {
+              safeEnqueue({ type: "finish", finishReason: "abort" });
               safeClose();
-            } catch (err2) {
-              safeEnqueue({ type: "error", error: { message: (err2 as Error).message } });
-              safeClose();
+            } else {
+              try {
+                const run = await agent.send(message, { onDelta });
+                await (run as any).wait();
+                safeClose();
+              } catch (err2) {
+                safeEnqueue({ type: "error", error: { message: (err2 as Error).message } });
+                safeClose();
+              }
             }
           }
         } finally {
-          abortSignal?.removeEventListener("abort", onAbort);
-          donePromiseResolve();
+          internalAbort.signal.removeEventListener("abort", onAbort);
+          abortSignal?.removeEventListener("abort", onExternalAbort);
+          // 通常経路ではいずれかの safeEnqueue で finishReason が確定する。
+          // ガードに弾かれて未確定のまま finally に到達するのは consumer の
+          // cancel() 直後のみで、この場合 cancel() 自体が "abort" を予約済み。
+          // 理論上の保険としてフォールバックを "abort" にする。
+          donePromiseResolve({ finishReason: finishReason ?? "abort" });
         }
       })();
     },
     cancel() {
+      // 二重クローズ防止フラグを先に立て、続いて内部 abort で IIFE の早期終了
+      // パスを発火させる。`controller.close()` をここで直接呼ばないのは、
+      // ReadableStream の cancel() 経由では controller が既に終端遷移中のため
+      // close() が `TypeError: Cannot close a stream that has already been
+      // requested to be closed` を投げる可能性があるため。終端理由は cancel()
+      // の発生源を反映して "abort" 固定とする。
       hasClosedStream = true;
+      setFinishReason("abort");
+      internalAbort.abort();
     },
   });
 
@@ -1541,7 +1654,6 @@ import { STATIC_FALLBACK_MODELS, makeModelMeta } from "./models.js";
 import { classifyError, logError } from "./errors.js";
 
 const MODELS_LIST_TIMEOUT_MS = 5_000;
-let warnedParamsOnce = false;
 
 async function listModelsWithTimeout(apiKey: string, log: Logger) {
   return await Promise.race([
@@ -1563,6 +1675,12 @@ export function createProviderHook(deps: {
   pool: AgentPool;
 }): ProviderHook {
   const { resolveApiKey, log, pool } = deps;
+  // chat.params 警告フラグはフック単位で保持する。モジュールスコープに置くと
+  // 複数のテストがプロセス内で同じプラグインモジュールを共有した際、最初の
+  // テストで一度発火した警告が他テストで再現できなくなり、テスト間の独立性が
+  // 崩れる。`createProviderHook` ごとにフラグを生成することで、テストは
+  // 新しいフックを作るだけで初期状態に戻せる。
+  let warnedParamsOnce = false;
 
   return {
     id: "cursor",
@@ -1583,8 +1701,25 @@ export function createProviderHook(deps: {
         });
         out.set(m.id, {
           ...meta,
+          // doStream は `models()` 呼出時の apiKey をクロージャに固定せず、
+          // 毎回 `resolveApiKey(ctx)` を再評価する。これにより
+          // `CURSOR_API_KEY` の差し替えや `opencode auth` での再認証が
+          // モデル一覧を再取得しなくても次の doStream から反映される。
+          // `ctx` 自体は `models()` 時点で確定するが、`resolveApiKey` は内部で
+          // env / auth ストアを毎回参照する想定なので、最新値が拾える。
           async doStream(args: any) {
-            return await runDoStream({ args, modelId: m.id, apiKey, log, pool });
+            const currentApiKey = await resolveApiKey(ctx);
+            return await runDoStream({
+              args,
+              modelId: m.id,
+              apiKey: currentApiKey,
+              log,
+              pool,
+              warnState: {
+                hasWarned: () => warnedParamsOnce,
+                markWarned: () => { warnedParamsOnce = true; },
+              },
+            });
           },
         });
       }
@@ -1599,14 +1734,15 @@ async function runDoStream(opts: {
   apiKey: string | undefined;
   log: Logger;
   pool: AgentPool;
+  warnState: { hasWarned: () => boolean; markWarned: () => void };
 }) {
-  const { args, modelId, apiKey, log, pool } = opts;
+  const { args, modelId, apiKey, log, pool, warnState } = opts;
   if (!apiKey) {
     log.error("cursor-provider: doStream invoked without API key");
     throw new Error("Cursor API key is not set; run 'opencode auth login cursor' or export CURSOR_API_KEY");
   }
-  if (!warnedParamsOnce && args.chatParams && Object.keys(args.chatParams).length > 0) {
-    warnedParamsOnce = true;
+  if (!warnState.hasWarned() && args.chatParams && Object.keys(args.chatParams).length > 0) {
+    warnState.markWarned();
     log.warn("cursor-provider: chat.params not supported by Cursor SDK; ignored", {
       paramKeys: Object.keys(args.chatParams),
     });
@@ -1627,28 +1763,33 @@ async function runDoStream(opts: {
     messageToSend = t.fullPromptOnMiss;
   }
 
-  const aborted = args.abortSignal?.aborted ?? false;
   const wasMiss = !hit;
 
   const { stream, done } = createStream({ agent, message: messageToSend, log, abortSignal: args.abortSignal });
 
-  done.then(async () => {
-    if (args.abortSignal?.aborted) {
-      if (hit) await pool.delete(t.prefixHash, modelId, apiKey);
-      else await (agent as any).close?.();
+  done.then(async ({ finishReason }) => {
+    // 終端理由に応じて pool 操作を分岐する。`abortSignal.aborted` のみで判定
+    // していた旧実装は status=error / cancelled / 例外経路を取りこぼし、
+    // 異常状態の agent を pool.put / pool.rekey で次ターンに引き継いでしまう
+    // 不具合があったため、createStream の解決値を契約として参照する。
+    if (finishReason === "stop") {
+      if (wasMiss) {
+        await pool.put(t.prefixHash, {
+          agent,
+          lastUsedAt: Date.now(),
+          modelId,
+          apiKeyFingerprint: fingerprint,
+        });
+      }
+      pool.rekey(fingerprint, modelId, t.prefixHash, t.nextHash);
       return;
     }
-    if (wasMiss) {
-      await pool.put(t.prefixHash, {
-        agent,
-        lastUsedAt: Date.now(),
-        modelId,
-        apiKeyFingerprint: fingerprint,
-      });
-      pool.rekey(t.prefixHash, t.nextHash);
-    } else {
-      pool.rekey(t.prefixHash, t.nextHash);
-    }
+    // abort / error: agent は既に部分的にメッセージを受信／中断済みで、
+    // SDK 内部状態が破損している可能性がある。プール再利用を避けるため、
+    // ヒット経由のエントリは pool.delete（5s タイムアウト付きで close）し、
+    // ミス経由は pool 未登録なので agent.close を直接呼ぶ。
+    if (hit) await pool.delete(t.prefixHash, modelId, apiKey);
+    else await (agent as any).close?.();
   }).catch((err) => logError(log, err, { phase: "post-stream" }));
 
   return { stream };

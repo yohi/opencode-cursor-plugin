@@ -263,8 +263,8 @@ export function logError(log: Logger, err: unknown, context: Record<string, unkn
 5. stream-proxy.createStream({ agent, message: fullPromptOnMiss })
 6-a. (正常完了) agent-pool.put(nextHash, { agent, ... })
        → LRU 容量超過時は最古を close（5s timeout）
-6-b. (キャンセル) agent-pool.put(prefixHash, { agent, ... })  // §7.3 参照
-       → 暫定登録。次ターン再開で同 prefixHash ヒットを狙う
+6-b. (キャンセル) agent.close() を 5s タイムアウトで実行（LRU 退避と同方針）
+       → プールには登録しない。次ターンは必ず §6.2 を新規再実行（§7.3 参照）
 6-c. (例外) §7.1 のマッピングに従い処理
        UnknownAgentError でリトライした場合は §6.2 の 4〜6-a 経路を再実行
 ```
@@ -326,12 +326,12 @@ export function logError(log: Logger, err: unknown, context: Record<string, unkn
 - OpenCode が渡す `AbortSignal` を監視
 - 発火時:
   1. onDelta ループから抜ける
-  2. **対象 agent の出自で分岐**:
-     - **プールヒット経由**（既にプールにある agent）: close せず保持（reuse 可能性のため）
-     - **プールミス経由**（§6.2 で `Agent.create` 直後、`pool.put` 未実行の agent）: **`prefixHash` を暫定キーとして即時 `pool.put`** で登録し、後続ターンの再開で再利用可能にする。LRU 退避時の優先順位はその時点の `lastUsedAt` に従う（特別扱いはしない）。プール上限が逼迫している場合は最古エントリが押し出されて `agent.close()`（5s タイムアウト）されるため、孤立 agent が滞留することはない
-  3. `controller.close()`
+  2. **対象 agent の出自を問わず `agent.close()` を 5s タイムアウトで実行**:
+     - プールヒット経由なら `pool.delete(hitKey)` も併せて実行
+     - プールミス経由なら未登録のため `close` のみ
+  3. `safeClose()` で `controller.close()`
 
-> 補足: §6.2 ステップ 6 の正常完了経路では `pool.put(nextHash, ...)` が実行されるが、キャンセル経路では「nextHash まで履歴が伸びていない」状態で終わるため、暫定キーには `prefixHash`（送信前の履歴ハッシュ）を採用する。次ターンで同じ会話が再開されれば `prefixHash` で即ヒットする。
+> **設計判断**: キャンセル後の agent 再利用は行わない。Cursor SDK は `agent.send(message)` 呼出時点で内部履歴に message を記録するため、キャンセル後に再利用すると次ターンの `latestUserMessage` が SDK 側で二重記録され、会話コンテキストが汚染される。状態汚染回避を `Agent.create` コスト（数秒）節約より優先し、確実な破棄を選択する。次ターンは必ず §6.2 のプールミス経路を新規実行する。
 
 ### 7.4 Tool-call 関連イベントの扱い
 

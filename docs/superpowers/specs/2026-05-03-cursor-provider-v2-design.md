@@ -128,6 +128,7 @@ interface AgentPool {
   tryGet(hash: string, modelId: string, apiKey: string): PooledAgent | undefined;
   put(hash: string, agent: PooledAgent): Promise<void>;  // LRU 退避時 close を 5s タイムアウト
   rekey(oldHash: string, newHash: string): void;
+  delete(hash: string, modelId: string, apiKey: string): Promise<void>;  // 該当エントリを除去 + agent.close() を 5s タイムアウト。未存在キーは no-op
   closeAll(): Promise<void>;
 }
 ```
@@ -327,7 +328,7 @@ export function logError(log: Logger, err: unknown, context: Record<string, unkn
 - 発火時:
   1. onDelta ループから抜ける
   2. **対象 agent の出自を問わず `agent.close()` を 5s タイムアウトで実行**:
-     - プールヒット経由なら `pool.delete(hitKey)` も併せて実行
+     - プールヒット経由なら `pool.delete(prefixHash, modelId, apiKey)` も併せて実行
      - プールミス経由なら未登録のため `close` のみ
   3. `safeClose()` で `controller.close()`
 
@@ -382,7 +383,7 @@ export function logError(log: Logger, err: unknown, context: Record<string, unkn
 | ファイル | 主要観点 |
 |---|---|
 | `tests/translator.test.ts` | 空履歴／履歴あり／連続 user message のハッシュ安定性、`prefixHash` と `nextHash` の分離、履歴分岐でハッシュ不一致、整形フォーマット、空 prompt や非対応ロールの拒否、**assistant メッセージを含む履歴で連続 2 ターンが同一プールキーで結ばれる（`turn1.nextHash === turn2.prefixHash`）**、**assistant 応答内容が変わっても user 列が同じならハッシュは変わらない（assistant 列がフィルタされている確認）**、末尾が user でない messages 配列を拒否 |
-| `tests/agent-pool.test.ts` | LRU 退避、`lastUsedAt` 更新、`rekey`、close 失敗時の warn、5s タイムアウト（fake timers）、apiKey 違いで別エントリ、**キャンセル経路で `agent.close()` が 5s タイムアウト付きで呼ばれ、プールには登録されないこと** |
+| `tests/agent-pool.test.ts` | LRU 退避、`lastUsedAt` 更新、`rekey`、close 失敗時の warn、5s タイムアウト（fake timers）、apiKey 違いで別エントリ、**キャンセル経路で `agent.close()` が 5s タイムアウト付きで呼ばれ、プールには登録されないこと**、**`delete` で該当エントリ除去 + `agent.close()` が 5s タイムアウト付きで呼ばれる、未存在キーへの `delete` が no-op となる** |
 | `tests/stream-proxy.test.ts` | TextDelta → text-delta、Thinking → reasoning-delta、ToolCallStarted → 警告挿入 + warn（同 `toolCallId` で 1 回のみ）、`PartialToolCallUpdate` / `ToolCallCompletedUpdate` がドロップされ text-delta に流出しない、TurnEnded → finish、AbortSignal でクローズ、`run.status=error` で error パート enqueue + `controller.close()`（`controller.error` を呼ばない）、未知イベントが debug ログのみ、**1 chunk 配送後 (`hasEmittedDelta=true`) の NetworkError でリトライが発火せず error パートが流れる（重複防止）**、`hasEmittedDelta=false` 時の NetworkError ではリトライが 1 回発火してから配送が継続する、**`TurnEndedUpdate` 後に `run.wait()` が `finished` で解決しても `controller.enqueue` / `close` が二度呼ばれない（`hasClosedStream` ガード動作）**、**`safeEnqueue` が close 後の呼出を debug ログのみで握り潰す** |
 | `tests/errors.test.ts` | 各 Cursor 例外型のマッピング、`classifyError` の phase 別判定（NetworkError × `create` / `pre-stream` で `retry: true`、`in-stream` / `post-stream` で `retry: false`）、NetworkError リトライ 1 回上限、UnknownAgentError でプール除去 + リトライ後 `pool.put(nextHash)` 実行 |
 | `tests/auth.test.ts` | `ctx.auth` 優先、env フォールバック、両方欠落時の `undefined` |

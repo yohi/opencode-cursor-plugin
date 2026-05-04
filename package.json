@@ -1,14 +1,14 @@
 {
   "name": "@yohi/opencode-cursor-plugin",
-  "version": "0.1.0",
-  "description": "OpenCode plugin that exposes the Cursor SDK as a custom tool",
+  "version": "0.2.0",
+  "description": "OpenCode provider plugin that exposes Cursor SDK models as a primary LLM provider",
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
   },
   "type": "module",
-  "main": ".opencode/plugins/custom-tools.ts",
+  "main": ".opencode/plugins/cursor-provider/index.ts",
   "exports": {
-    ".": "./.opencode/plugins/custom-tools.ts"
+    ".": "./.opencode/plugins/cursor-provider/index.ts"
   },
   "files": [
     ".opencode/plugins"
@@ -20,7 +20,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e": "bash scripts/e2e-cursor-provider.sh"
   },
   "dependencies": {
     "@cursor/sdk": "^1.0.10",

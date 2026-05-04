@@ -12,7 +12,6 @@ export async function disposeAgentSafely(agent: SDKAgent, log: Logger): Promise<
   try {
     // Symbol.asyncDispose は言語仕様上ブラケット記法が必須であり、動的なキーアクセスではないため、Codacy/ESLint のセキュリティ警告を無視します。
     // eslint-disable-next-line security/detect-object-injection
-    const disposePromise = agent[Symbol.asyncDispose]().then(() => "ok" as const);
     // skip-codacy
     const disposePromise = agent[Symbol.asyncDispose]().then(() => "ok" as const);
     // タイムアウト後に dispose が遅延 reject した場合の UnhandledPromiseRejection を抑制する

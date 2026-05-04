@@ -23,3 +23,6 @@ engines:
     exclude_paths:
       - "AGENTS.md"
       - "**/AGENTS.md"
+ignore_issues:
+  - path: ".opencode/plugins/cursor-provider/agent-cleanup.ts"
+    pattern: "Using non-static data to retrieve and run functions from the object is dangerous"

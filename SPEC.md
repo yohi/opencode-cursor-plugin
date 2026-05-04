@@ -1,87 +1,19 @@
 # OpenCode Cursor Provider プラグイン仕様書 (SPEC.md)
 
-このドキュメントは OpenCode Cursor Provider プラグイン (v0.2.0以降) の技術仕様・アーキテクチャ設計を定義します。
+このファイルは旧 `cursor_prompt` ツール仕様の要約ではなく、Provider ベース実装への移行案内として扱います。現行の詳細設計は `docs/superpowers/specs/2026-05-03-cursor-provider-v2-design.md` を正とします。
 
-## 1. 目的とスコープ
+## 現行仕様の参照先
 
-OpenCode のメイン LLM プロバイダーとして Cursor Headless SDK (`@cursor/sdk`) を直接利用できるようにします。旧 `cursor_prompt` カスタムツールは廃止されました。
+- 詳細設計: [`docs/superpowers/specs/2026-05-03-cursor-provider-v2-design.md`](./docs/superpowers/specs/2026-05-03-cursor-provider-v2-design.md)
+- 実装計画: [`docs/superpowers/plans/2026-05-03-cursor-provider-v2-implementation.md`](./docs/superpowers/plans/2026-05-03-cursor-provider-v2-implementation.md)
 
-### スコープ外
-- Cursor アカウントの OAuth 自動ログイン
-- OpenCode の MCP ツール群を Cursor 側へ完全同期する機能
+## 移行サマリ
 
-## 2. 設計判断サマリ
+- `cursor_prompt` カスタムツールは削除されました。
+- プラグインのエントリポイントは `.opencode/plugins/cursor-provider/index.ts` です。
+- OpenCode では `cursor/composer-2` などを Provider として直接選択します。
+- 認証は `opencode auth login cursor` または `CURSOR_API_KEY` を使います。
 
-| テーマ | 採用 | 根拠 |
-|---|---|---|
-| 既存ツール | `cursor_prompt` 完全削除 | Provider が代替 |
-| モデル一覧 | 動的取得 + 静的フォールバック | 最新モデル反映と起動信頼性の両立 |
-| エージェント性 | Pure LLM モード | 二重エージェント問題回避 |
-| 履歴の橋渡し | ハッシュ＋プール最適化 / フルプロンプト fallback | レイテンシ最小化と新規／分岐会話への耐性両立 |
-| プールライフサイクル | LRU 上限 8、Exclusive Checkout、close 5 秒タイムアウト | 予測可能でリソース漏洩や並列利用時の破損なし |
-| ストリームイベント | text 通常 / thinking → reasoning / tool-call → 警告 | Cursor の表現力を活用しつつ Pure LLM 建前を可視化 |
-| 認証 | env var + `AuthHook`（api タイプ） | UX 改善。OAuth はスコープ外 |
-| 命名 | `id="cursor"` / default `composer-2` | Cursor ドキュメントと一致 |
+## 旧仕様について
 
-## 3. アーキテクチャ概要
-
-```text
-[OpenCode Runtime]
-  │ ① 起動: PluginInput を渡して初期化
-  ▼
-[CursorProviderPlugin (entry)]
-  │ ② AuthHook / ProviderHook 登録
-  ▼
-  └─ models() コールバック
-       │ ③ Cursor.models.list() → 失敗時は静的フォールバック
-       ▼ Map<modelId, ModelV2> を返却
-
-[OpenCode 推論時]
-  │ ④ ユーザーが cursor/composer-2 等を選択して実行
-  ▼
-[StreamProxy & AgentPool]
-  │ ⑤ Translator: messages → 履歴ハッシュ + last user msg
-  │ ⑥ AgentPool.tryGet(hash) → ヒット時プールから削除 (Exclusive Checkout)
-  │ ⑦ agent.send(msg, { onDelta, onStep })
-  │ ⑧ onDelta を ReadableStream に変換
-  │ ⑨ ストリーム完了/エラー時にプールへ put(返却) または close(破棄)
-  ▼
-[OpenCode UI] (リアルタイム描画)
-```
-
-## 4. モジュール構成 (`.opencode/plugins/cursor-provider/`)
-
-- `index.ts`: エントリ。Plugin 関数本体、終了フック
-- `provider.ts`: ProviderHook 実装。ストリーム実行ライフサイクル管理
-- `auth.ts`: AuthHook 定義。環境変数または設定からAPIキー解決
-- `models.ts`: 静的フォールバックモデルリスト、ModelV2 ファクトリ
-- `translator.ts`: 履歴ハッシュ化 (`role="system"` と `role="user"` のみ対象) + プロンプト変換
-- `agent-pool.ts`: LRU キャッシュ。排他的チェックアウト (`tryGet`), `put`, `closeAll`
-- `stream-proxy.ts`: `agent.send` → `ReadableStream` 変換、二重終端ガード
-- `agent-cleanup.ts`: `disposeAgentSafely` (5sタイムアウト付き非同期破棄)
-- `logger.ts`: OpenCode ロガーのラップ
-- `errors.ts`: Cursor SDK エラーのマッピング、リトライ戦略判定
-
-## 5. データフローと状態管理
-
-### 5.1 履歴のハッシュ化 (`translator.ts`)
-- **対象**: `role="system"` と `role="user"` のみ (SHA-256)。
-- **理由**: Cursor SDKの Agent は内部で会話状態を保持するため、assistant応答を含めるとターンごとのハッシュが必ず不一致になりプール再利用ができなくなるため。
-
-### 5.2 AgentPool のライフサイクル (Exclusive Checkout)
-- **tryGet**: ヒットした場合、即座に Map からエントリを削除します（排他的チェックアウト）。これにより同一エージェントの並列使用による状態破損を防ぎます。
-- **実行後**: `provider.ts` の `runDoStream` 側でストリームの `done` を監視し、正常終了なら `pool.put` でプールに戻し、異常終了やキャンセルの場合はそのまま `disposeAgentSafely` で破棄します。
-
-### 5.3 エラーハンドリングとリトライ
-- **NetworkError**: `create` / `pre-stream` フェーズ（onDelta未発火）のみ 500ms バックオフで1回リトライ可能。`in-stream` ではチャンク重複を防ぐためリトライしません。
-- **UnknownAgentError**: プールヒット時の `pre-stream` フェーズのみ、`provider.ts` が注入した `recreateAgent` コールバック経由で新規エージェントを作り直しフルプロンプトで1回再試行します。
-- **キャンセル (AbortSignal / cancel)**: ストリーム処理中にキャンセルされた場合、エージェントは直ちに `disposeAgentSafely` 経由で破棄されます。汚染を防ぐためプールには戻しません。
-
-## 6. Tool-call 関連イベントの扱い
-- **ToolCallStartedUpdate**: Stream に text-delta として警告メッセージを **1 回のみ** 挿入し、ログ出力します。Pure LLM モードであるため、実行は行われません。
-- **PartialToolCallUpdate / ToolCallCompletedUpdate**: 無視（ドロップ）し、JSON断片がUIに漏れるのを防ぎます。
-
-## 7. 機密情報の扱い
-- API キーはログに出力しません。識別のための fingerprint (SHA-256化) のみ記録します。
-- プロンプト、レスポンス内容は length のみをログ出力します。
-
+旧ツール実装を前提にした記述は破棄し、新規の判断は Provider 設計書に従ってください。

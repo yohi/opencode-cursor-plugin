@@ -2,7 +2,7 @@
 
 OpenCode 用 Provider プラグイン。Cursor 公式 SDK (`@cursor/sdk`) を OpenCode のメイン LLM プロバイダーとして登録し、`cursor/composer-2` などのモデルを直接利用できるようにします。
 
-詳細な設計は [docs/superpowers/specs/2026-05-03-cursor-provider-v2-design.md](./docs/superpowers/specs/2026-05-03-cursor-provider-v2-design.md) を参照してください。
+詳細な設計とアーキテクチャについては [SPEC.md](./SPEC.md) を参照してください。
 
 ## AIエージェント用インストールプロンプト
 

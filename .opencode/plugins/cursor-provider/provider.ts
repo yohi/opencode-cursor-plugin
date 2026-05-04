@@ -12,11 +12,12 @@ import { translate } from "./translator";
 const MODELS_LIST_TIMEOUT_MS = 5_000;
 
 async function listModelsWithTimeout(apiKey: string, log: Logger) {
+  let timeoutId: NodeJS.Timeout | undefined;
   try {
     return await Promise.race([
       Cursor.models.list({ apiKey }),
       new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error("models.list timeout")), MODELS_LIST_TIMEOUT_MS);
+        timeoutId = setTimeout(() => reject(new Error("models.list timeout")), MODELS_LIST_TIMEOUT_MS);
       }),
     ]);
   } catch (err) {
@@ -24,6 +25,8 @@ async function listModelsWithTimeout(apiKey: string, log: Logger) {
       errorType: err instanceof Error ? err.constructor.name : typeof err,
     });
     return null;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
   }
 }
 

@@ -125,4 +125,22 @@ describe("createProviderHook.models()", () => {
       expect.objectContaining({ apiKey: "key-1" }),
     );
   });
+
+  it("listModelsWithTimeout が完了したときに clearTimeout が呼ばれる", async () => {
+    const spy = vi.spyOn(global, 'clearTimeout');
+    const sdk = await import("@cursor/sdk");
+    vi.mocked(sdk.Cursor.models.list).mockResolvedValue([]);
+
+    const hook = createProviderHook({
+      resolveApiKey: async () => "key",
+      log,
+      pool: createAgentPool({ log, capacity: 8 }),
+    });
+
+    const ctx: any = { auth: { get: async () => undefined } };
+    await hook.models?.("cursor" as any, ctx);
+
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
+  });
 });

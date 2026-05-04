@@ -34,10 +34,12 @@ export function createProviderHook(deps: {
 }): ProviderHook {
   const { resolveApiKey, log, pool } = deps;
   let warnedParamsOnce = false;
+  let latestCtx: ProviderHookContext | undefined;
 
   return {
     id: "cursor",
     async models(_provider: any, ctx: ProviderHookContext) {
+      latestCtx = ctx;
       const apiKey = await resolveApiKey(ctx);
       const dynamicModels = apiKey ? await listModelsWithTimeout(apiKey, log) : null;
       const sourceModels = dynamicModels ?? STATIC_FALLBACK_MODELS;
@@ -53,7 +55,7 @@ export function createProviderHook(deps: {
         result[model.id] = {
           ...meta,
           async doStream(args: any) {
-            const currentApiKey = await resolveApiKey(ctx);
+            const currentApiKey = await resolveApiKey(latestCtx ?? ctx);
             return runDoStream({
               args,
               modelId: model.id,

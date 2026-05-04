@@ -86,4 +86,40 @@ describe("createProviderHook.models()", () => {
     const result = await resultPromise;
     expect(result && "composer-2" in result).toBe(true);
   });
+
+  it("古い doStream でも最新の ctx から API キーを再解決する", async () => {
+    const sdk = await import("@cursor/sdk");
+    vi.mocked(sdk.Cursor.models.list).mockResolvedValue([
+      { id: "composer-2", name: "Composer 2", contextWindow: 200_000 } as any,
+    ]);
+    vi.mocked(sdk.Agent.create).mockResolvedValue({
+      send: vi.fn(async (_message: string, opts: any) => {
+        opts.onDelta({ type: "turn-ended" });
+        return { wait: async () => ({ status: "finished" }) };
+      }),
+      close: vi.fn(),
+    } as any);
+
+    const ctx1 = { tag: "ctx-1", auth: { get: vi.fn() } } as any;
+    const ctx2 = { tag: "ctx-2", auth: { get: vi.fn() } } as any;
+    const resolveApiKey = vi.fn(async (ctx: any) => (ctx === ctx1 ? "key-1" : "key-2"));
+    const hook = createProviderHook({
+      resolveApiKey,
+      log,
+      pool: createAgentPool({ log, capacity: 8 }),
+    });
+
+    const models1 = await hook.models?.("cursor" as any, ctx1);
+    await hook.models?.("cursor" as any, ctx2);
+    const streamResult = await (models1 as any)?.["composer-2"]?.doStream({
+      prompt: [{ role: "user", content: [{ type: "text", text: "hello" }] }],
+    });
+
+    await streamResult?.stream.getReader().read();
+
+    expect(resolveApiKey).toHaveBeenLastCalledWith(ctx2);
+    expect(sdk.Agent.create).toHaveBeenLastCalledWith(
+      expect.objectContaining({ apiKey: "key-2" }),
+    );
+  });
 });

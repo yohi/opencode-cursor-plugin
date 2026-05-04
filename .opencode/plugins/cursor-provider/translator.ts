@@ -15,12 +15,29 @@ export interface TranslatedRequest {
   nextHash: string;
 }
 
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 function extractText(message: PromptMessage): string {
   if (typeof message.content === "string") {
     return message.content;
   }
 
-  return message.content.map((part) => (part.type === "text" ? part.text : "")).join("");
+  return message.content
+    .map((part) => {
+      if (part.type === "text") return (part as { text: string }).text;
+      const id = part.id || part.name || part.url || "unknown";
+      return `[${part.type}:${id}]`;
+    })
+    .join("");
+
 }
 
 function hashMessages(messages: PromptMessage[]): string {
@@ -50,7 +67,10 @@ export function translate(prompt: LanguageModelV2Prompt): TranslatedRequest {
   const latestUserMessage = extractText(last);
   const prefixHash = hashMessages(prompt.slice(0, -1));
   const nextHash = hashMessages(prompt);
-  const fullPromptOnMiss = prompt.map((message) => `<${message.role}>${extractText(message)}</${message.role}>`).join("\n");
+  const fullPromptOnMiss = prompt
+    .map((message) => `<${message.role}>${escapeHtml(extractText(message))}</${message.role}>`)
+    .join("\n");
+
 
   return {
     prefixHash,

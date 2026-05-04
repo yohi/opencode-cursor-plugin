@@ -17,7 +17,10 @@ export interface RetryDecision {
   reason: string;
 }
 
-const noRetry = (reason: string): RetryDecision => ({ retry: false, delayMs: 0, reason });
+function noRetry(reason: string): RetryDecision {
+  return { retry: false, delayMs: 0, reason };
+}
+
 
 export function classifyError(err: unknown, ctx: { phase: RetryPhase }): RetryDecision {
   if (err instanceof NetworkError) {
@@ -34,7 +37,10 @@ export function classifyError(err: unknown, ctx: { phase: RetryPhase }): RetryDe
 
   if (err instanceof AuthenticationError) return noRetry("AuthenticationError");
   if (err instanceof ConfigurationError) return noRetry("ConfigurationError");
-  if (err instanceof RateLimitError) return noRetry("RateLimitError");
+  if (err instanceof RateLimitError) {
+    return { retry: true, delayMs: 2000, reason: "RateLimitError with backoff" };
+  }
+
   if (err instanceof IntegrationNotConnectedError) return noRetry("IntegrationNotConnectedError");
   if (err instanceof UnknownAgentError) return noRetry("UnknownAgentError handled by caller");
   if (err instanceof CursorSdkError) return noRetry("CursorSdkError");
@@ -55,9 +61,15 @@ export function logError(log: Logger, err: unknown, context: Record<string, unkn
                     : typeof err;
   const messageLength = err instanceof Error ? err.message.length : 0;
 
+  const allowedKeys = ["phase", "requestId", "status", "userId", "model"];
+  const safeContext = Object.fromEntries(
+    Object.entries(context).filter(([key]) => allowedKeys.includes(key))
+  );
+
   log.error("cursor-provider: error captured", {
-    ...context,
+    ...safeContext,
     errorType,
     messageLength,
   });
+
 }

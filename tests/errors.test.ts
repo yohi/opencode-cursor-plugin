@@ -33,7 +33,11 @@ describe("classifyError", () => {
   });
 
   it("RateLimitError / ConfigurationError / IntegrationNotConnectedError は retry: false", () => {
-    expect(classifyError(new RateLimitError("rl"), { phase: "create" }).retry).toBe(false);
+    expect(classifyError(new RateLimitError("rl"), { phase: "create" })).toMatchObject({
+      retry: true,
+      delayMs: 2000,
+    });
+
     expect(classifyError(new ConfigurationError("cfg"), { phase: "pre-stream" }).retry).toBe(false);
     expect(
       classifyError(
@@ -46,9 +50,17 @@ describe("classifyError", () => {
     ).toBe(false);
   });
 
-  it("UnknownAgentError は in-stream を含む全 phase で retry: false（呼び出し側で別経路リトライ）", () => {
-    expect(classifyError(new UnknownAgentError("gone"), { phase: "in-stream" }).retry).toBe(false);
+  it("UnknownAgentError は全 phase で retry: false", () => {
+    const err = new UnknownAgentError("gone");
+    for (const phase of ["create", "pre-stream", "in-stream", "post-stream"] as const) {
+      expect(classifyError(err, { phase }).retry).toBe(false);
+    }
   });
+
+  it("CursorSdkError は retry: false", () => {
+    expect(classifyError(new CursorSdkError("sdk error"), { phase: "create" }).retry).toBe(false);
+  });
+
 
   it("予期せぬ例外は retry: false", () => {
     expect(classifyError(new Error("boom"), { phase: "create" }).retry).toBe(false);
@@ -56,13 +68,21 @@ describe("classifyError", () => {
 });
 
 describe("logError", () => {
-  it("API キー文字列・prompt 本文をログに出さず、length と type のみ記録", () => {
+  it("API キー文字列・prompt 本文をログに出さず、Allowlist にないキーも削除される", () => {
     const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
 
-    logError(log, new AuthenticationError("sk-very-secret-12345"), { phase: "create" });
+    logError(
+      log,
+      new AuthenticationError("sk-very-secret-12345"),
+      { phase: "create", secretKey: "hidden", model: "claude-3" }
+    );
 
     const args = log.error.mock.calls[0]?.[1] ?? {};
     expect(JSON.stringify(args)).not.toMatch(/sk-very-secret/);
+    expect(args.phase).toBe("create");
+    expect(args.model).toBe("claude-3");
+    expect(args.secretKey).toBeUndefined();
     expect(args.errorType).toBe("AuthenticationError");
   });
+
 });

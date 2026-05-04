@@ -37,10 +37,9 @@ Adhere to the "Less is More" principle: minimize complexity in agent design and 
 
 For detailed context, please refer to the following documents before making architectural changes:
 
-- **Detailed Provider Design:** `docs/superpowers/specs/2026-05-03-cursor-provider-v2-design.md`
+- **Detailed Provider Design:** `SPEC.md`
   - Always consult this document before modifying `.opencode/plugins/cursor-provider/` modules.
   - Reference it for any changes that impact provider flow, pooling, streaming, or cleanup.
-- **Implementation Plan:** `docs/superpowers/plans/2026-05-03-cursor-provider-v2-implementation.md`
 - **User Guide (`README.md`):** Contains setup instructions and environment variable requirements.
 
 ## Key Architectural Guidelines

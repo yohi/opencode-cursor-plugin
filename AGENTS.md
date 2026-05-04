@@ -12,7 +12,7 @@ To ensure system integrity and security, you must adhere to the following constr
 
 ## Project Overview
 
-This is an OpenCode custom tool plugin that exposes the Cursor SDK (`@cursor/sdk`) as a single `cursor_prompt` tool. It allows OpenCode agents to send prompts to a local Cursor agent and retrieve the text response.
+This is an OpenCode Provider plugin that exposes Cursor SDK (`@cursor/sdk`) models as the primary LLM provider. The legacy `cursor_prompt` custom tool has been removed in favor of `.opencode/plugins/cursor-provider/index.ts`.
 
 ## Tech Stack & Tooling
 
@@ -26,30 +26,28 @@ This is an OpenCode custom tool plugin that exposes the Cursor SDK (`@cursor/sdk
 - Install dependencies: `pnpm install`
 - Run type-checking: `pnpm typecheck`
 - Run unit tests: `pnpm test`
+- Run manual E2E helper: `pnpm test:e2e`
 - **Note:** All development, testing, and type-checking should ideally be performed inside the provided Devcontainer.
 
 ## Less is More
 
-Adhere to the "Less is More" principle: minimize complexity in agent design and documentation. Proactively remove redundant logic or documentation. For related architectural constraints, see the Detailed Project Specifications ([SPEC.md](./SPEC.md)).
+Adhere to the "Less is More" principle: minimize complexity in agent design and documentation. Proactively remove redundant logic or documentation. For related architectural constraints, see the detailed Provider design.
 
 ## Progressive Disclosure & Documentation
 
 For detailed context, please refer to the following documents before making architectural changes:
 
-- **Detailed Project Specifications ([SPEC.md](./SPEC.md)):** Contains the complete architectural design, the 8-step execute flow, and the list of 11 error-handling edge cases.
-    - Always consult this document before modifying `.opencode/plugins/custom-tools.ts`.
-    - Reference it for any changes that impact the core execution flow.
-- **User Guide (`README.md`):** Contains setup instructions and environment variable requirements (e.g., `CURSOR_API_KEY`).
+- **Detailed Provider Design:** `docs/superpowers/specs/2026-05-03-cursor-provider-v2-design.md`
+  - Always consult this document before modifying `.opencode/plugins/cursor-provider/` modules.
+  - Reference it for any changes that impact provider flow, pooling, streaming, or cleanup.
+- **Implementation Plan:** `docs/superpowers/plans/2026-05-03-cursor-provider-v2-implementation.md`
+- **User Guide (`README.md`):** Contains setup instructions and environment variable requirements.
 
 ## Key Architectural Guidelines
 
-- **Error Handling:** The plugin should handle errors precisely when using the built-in agent SDK.
-    - Catch `CursorAgentError` and its derivatives like `NetworkError`, `RateLimitError`, and `AuthenticationError` individually.
-    - Log these errors before re-throwing them to the OpenCode runtime.
-    - Use separate documented strategies for generic or alternative implementations.
-- **Resource Management:** In SDK-based usage, ensure `agent.close()` is invoked in a cleanup mechanism like `try/finally` to prevent resource leaks. This applies to both success and failure scenarios.
+- **Error Handling:** Catch SDK errors precisely and log them before re-throwing.
+- **Resource Management:** Use the shared cleanup path for pooled and non-pooled agents. Avoid leaking long-lived agent instances.
 - **Logging & Security:**
-    - **Logging Framework:** Always use the custom `Logger` wrapper around `client.app.log` for production code. Avoid using `console.log`.
-    - **Temporary Logging:** You may use `console.log` during local development if the primary logger is unavailable. Annotate these instances with a `TODO` for future replacement.
-    - **Data Security:** Never include sensitive values such as `CURSOR_API_KEY`, prompt text, or response text in any logs.
-    - **Safe Metadata:** Only log safe metadata like string lengths, status codes, or run IDs.
+  - Always use the custom `Logger` wrapper around `client.app.log` for production code.
+  - Never include sensitive values such as `CURSOR_API_KEY`, prompt text, or response text in logs.
+  - Only log safe metadata like lengths, status codes, hashes/fingerprints, or run IDs.

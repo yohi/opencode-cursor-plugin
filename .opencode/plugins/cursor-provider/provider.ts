@@ -120,7 +120,7 @@ async function runDoStream(opts: {
   let replacedAgent: any;
   const recreateAgent = hit
     ? async () => {
-        await pool.delete(translated.prefixHash, modelId, apiKey);
+        await disposeAgentSafely(agent, log);
         const fresh = await createAgentWithRetry({ apiKey, modelId, log });
         replacedAgent = fresh;
         return { agent: fresh, message: translated.fullPromptOnMiss };
@@ -137,27 +137,14 @@ async function runDoStream(opts: {
 
   void done
     .then(async ({ finishReason, errorType }) => {
+      const finalAgent = replacedAgent || agent;
       if (finishReason === "stop") {
-        if (replacedAgent) {
-          await pool.put(translated.nextHash, {
-            agent: replacedAgent,
-            lastUsedAt: Date.now(),
-            modelId,
-            apiKeyFingerprint: fingerprint,
-          });
-          return;
-        }
-
-        if (wasMiss) {
-          await pool.put(translated.nextHash, {
-            agent,
-            lastUsedAt: Date.now(),
-            modelId,
-            apiKeyFingerprint: fingerprint,
-          });
-        } else {
-          pool.rekey(fingerprint, modelId, translated.prefixHash, translated.nextHash);
-        }
+        await pool.put(translated.nextHash, {
+          agent: finalAgent,
+          lastUsedAt: Date.now(),
+          modelId,
+          apiKeyFingerprint: fingerprint,
+        });
         return;
       }
 
@@ -165,16 +152,7 @@ async function runDoStream(opts: {
         log.debug("cursor-provider: stream ended with errorType", { errorType });
       }
 
-      if (replacedAgent) {
-        await disposeAgentSafely(replacedAgent, log);
-        return;
-      }
-
-      if (hit) {
-        await pool.delete(translated.prefixHash, modelId, apiKey);
-      } else {
-        await disposeAgentSafely(agent, log);
-      }
+      await disposeAgentSafely(finalAgent, log);
     })
     .catch((err) => {
       logError(log, err, { phase: "post-stream" });

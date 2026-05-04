@@ -13,8 +13,6 @@ export interface PooledAgent {
 export interface AgentPool {
   tryGet(hash: string, modelId: string, apiKey: string): PooledAgent | undefined;
   put(hash: string, agent: PooledAgent): Promise<void>;
-  rekey(fingerprint: string, modelId: string, oldHash: string, newHash: string): void;
-  delete(hash: string, modelId: string, apiKey: string): Promise<void>;
   closeAll(): Promise<void>;
 }
 
@@ -74,32 +72,6 @@ export function createAgentPool(deps: { log: Logger; capacity: number }): AgentP
       }
 
       await evictIfNeeded();
-    },
-    rekey(fingerprint, modelId, oldHash, newHash) {
-      const oldKey = poolKey(fingerprint, modelId, oldHash);
-      const entry = map.get(oldKey);
-      if (!entry) return;
-
-      const newKey = poolKey(fingerprint, modelId, newHash);
-      const displaced = map.get(newKey);
-      if (displaced && displaced.agent !== entry.agent) {
-        log.warn("cursor-provider: rekey displaced existing entry; disposing displaced agent (async)", {
-          modelId,
-          apiKeyFingerprint: fingerprint,
-        });
-        disposeAgentSafely(displaced.agent, log).catch(() => {});
-      }
-
-      map.delete(oldKey);
-      map.set(newKey, entry);
-    },
-    async delete(hash, modelId, apiKey) {
-      const key = poolKey(fingerprintApiKey(apiKey), modelId, hash);
-      const entry = map.get(key);
-      if (!entry) return;
-
-      map.delete(key);
-      await disposeAgentSafely(entry.agent, log);
     },
     async closeAll() {
       const entries = [...map.values()];

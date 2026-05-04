@@ -54,6 +54,8 @@ export function createAgentPool(deps: { log: Logger; capacity: number }): AgentP
       const entry = map.get(key);
       if (!entry) return undefined;
 
+      // Exclusive checkout: 取得したらプールから削除する
+      map.delete(key);
       entry.lastUsedAt = Date.now();
       return entry;
     },

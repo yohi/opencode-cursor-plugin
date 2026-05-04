@@ -38,6 +38,23 @@ describe("AgentPool", () => {
     expect(hit?.lastUsedAt).toBe(Date.now());
   });
 
+  it("tryGet はエントリを取得するとプールから削除する (Exclusive Checkout)", async () => {
+    const pool = createAgentPool({ log, capacity: 2 });
+    const apiKey = "key";
+    const agent = makeAgent(apiKey);
+    const hash = "abc";
+
+    await pool.put(hash, agent);
+
+    const hit1 = pool.tryGet(hash, agent.modelId, apiKey);
+    expect(hit1).toBeDefined();
+    expect(hit1?.agent).toBe(agent.agent);
+
+    // 2回目は削除されているため取得できないはず
+    const hit2 = pool.tryGet(hash, agent.modelId, apiKey);
+    expect(hit2).toBeUndefined();
+  });
+
   it("LRU 容量超過時、最古エントリを asyncDispose する", async () => {
     const pool = createAgentPool({ log, capacity: 2 });
     const a1 = makeAgent();

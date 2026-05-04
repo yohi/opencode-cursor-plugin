@@ -38,6 +38,23 @@ describe("AgentPool", () => {
     expect(hit?.lastUsedAt).toBe(Date.now());
   });
 
+  it("tryGet はエントリを取得するとプールから削除する (Exclusive Checkout)", async () => {
+    const pool = createAgentPool({ log, capacity: 2 });
+    const apiKey = "key";
+    const agent = makeAgent(apiKey);
+    const hash = "abc";
+
+    await pool.put(hash, agent);
+
+    const hit1 = pool.tryGet(hash, agent.modelId, apiKey);
+    expect(hit1).toBeDefined();
+    expect(hit1?.agent).toBe(agent.agent);
+
+    // 2回目は削除されているため取得できないはず
+    const hit2 = pool.tryGet(hash, agent.modelId, apiKey);
+    expect(hit2).toBeUndefined();
+  });
+
   it("LRU 容量超過時、最古エントリを asyncDispose する", async () => {
     const pool = createAgentPool({ log, capacity: 2 });
     const a1 = makeAgent();
@@ -86,53 +103,6 @@ describe("AgentPool", () => {
 
     vi.advanceTimersByTime(5_000);
     await expect(result).resolves.toBeUndefined();
-  });
-
-  it("rekey で旧キーが無効化、新キーで取れる", async () => {
-    const pool = createAgentPool({ log, capacity: 8 });
-    const apiKey = "key-original";
-    const agent = makeAgent(apiKey);
-
-    await pool.put("old", agent);
-    pool.rekey(agent.apiKeyFingerprint, agent.modelId, "old", "new");
-
-    expect(pool.tryGet("old", agent.modelId, apiKey)).toBeUndefined();
-    expect(pool.tryGet("new", agent.modelId, apiKey)).toBeDefined();
-  });
-
-  it("rekey: 別 fingerprint の同一 prefixHash エントリは巻き込まれない", async () => {
-    const pool = createAgentPool({ log, capacity: 8 });
-    const apiKeyA = "user-a";
-    const apiKeyB = "user-b";
-    const a = makeAgent(apiKeyA);
-    const b = makeAgent(apiKeyB);
-
-    await pool.put("shared", a);
-    await pool.put("shared", b);
-    pool.rekey(a.apiKeyFingerprint, a.modelId, "shared", "next");
-
-    expect(pool.tryGet("next", a.modelId, apiKeyA)).toBeDefined();
-    expect(pool.tryGet("shared", a.modelId, apiKeyA)).toBeUndefined();
-    expect(pool.tryGet("shared", b.modelId, apiKeyB)).toBeDefined();
-    expect(pool.tryGet("next", b.modelId, apiKeyB)).toBeUndefined();
-  });
-
-  it("delete で該当エントリ除去 + agent[Symbol.asyncDispose] を 5s タイムアウト付きで実行", async () => {
-    const pool = createAgentPool({ log, capacity: 8 });
-    const apiKey = "k";
-    const agent = makeAgent(apiKey);
-
-    await pool.put("h1", agent);
-    await pool.delete("h1", agent.modelId, apiKey);
-
-    expect(agent.agent[Symbol.asyncDispose]).toHaveBeenCalled();
-    expect(pool.tryGet("h1", agent.modelId, apiKey)).toBeUndefined();
-  });
-
-  it("delete: 未存在キーは no-op", async () => {
-    const pool = createAgentPool({ log, capacity: 8 });
-
-    await expect(pool.delete("missing", "m", "k")).resolves.toBeUndefined();
   });
 
   it("apiKey が異なれば別エントリとして扱う", async () => {

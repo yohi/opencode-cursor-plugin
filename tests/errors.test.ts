@@ -31,10 +31,10 @@ describe("classifyError", () => {
     expect(classifyError(err, { phase: "in-stream" }).retry).toBe(false);
   });
 
-  it("NetworkError は in-stream 以降でも explicitly isRetryable: true なら retry: true", () => {
+  it("NetworkError は in-stream 以降では explicitly isRetryable: true でも retry: false（ストリーム重複防止）", () => {
     const err = new NetworkError("retryable-late");
     Object.assign(err, { isRetryable: true });
-    expect(classifyError(err, { phase: "in-stream" })).toMatchObject({ retry: true, delayMs: 500 });
+    expect(classifyError(err, { phase: "in-stream" }).retry).toBe(false);
   });
 
   it("NetworkError は in-stream / post-stream では retry: false（ストリーム重複防止）", () => {

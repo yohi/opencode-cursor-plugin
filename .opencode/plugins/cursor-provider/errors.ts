@@ -25,15 +25,12 @@ function noRetry(reason: string): RetryDecision {
 export function classifyError(err: unknown, ctx: { phase: RetryPhase }): RetryDecision {
   if (err instanceof NetworkError) {
     // We consider any NetworkError retryable in early phases (pre-delivery).
-    // In later phases, we only retry if explicitly marked as retryable by the SDK.
     if (ctx.phase === "create" || ctx.phase === "pre-stream") {
       return { retry: true, delayMs: 500, reason: "NetworkError safe to retry pre-delivery" };
     }
 
-    if ((err as any).isRetryable === true) {
-      return { retry: true, delayMs: 500, reason: "NetworkError explicitly marked as retryable" };
-    }
-
+    // In later phases, we NEVER retry to avoid duplicating stream parts, 
+    // even if the SDK marks it as retryable.
     return noRetry("NetworkError after delivery would duplicate stream");
   }
 

@@ -81,7 +81,7 @@ function makeContext(): { context: FakeContext; log: FakeLog } {
 
 async function loadTool() {
   const { context, log } = makeContext();
-  const plugin = (await CustomToolsPlugin(context)) as Hooks;
+  const plugin = (await CustomToolsPlugin(context as any)) as Hooks;
   const tool = plugin.tool?.cursor_prompt as unknown as ToolDefinition;
   if (!tool) {
     throw new Error("cursor_prompt tool not found in plugin");

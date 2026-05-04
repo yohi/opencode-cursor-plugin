@@ -33,7 +33,8 @@ function extractText(message: PromptMessage): string {
   return message.content
     .map((part) => {
       if (part.type === "text") return (part as { text: string }).text;
-      const id = part.id || part.name || part.url || "unknown";
+      const p = part as Record<string, unknown>;
+      const id = (p.id as string | undefined) || (p.name as string | undefined) || (p.url as string | undefined) || "unknown";
       return `[${part.type}:${id}]`;
     })
     .join("");

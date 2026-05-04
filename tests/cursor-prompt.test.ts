@@ -10,11 +10,13 @@ vi.mock("@cursor/sdk", () => {
   class RateLimitError extends CursorAgentError {}
   class ConfigurationError extends CursorAgentError {}
   class NetworkError extends CursorAgentError {
-    isRetryable: boolean;
+    isRetryable?: boolean;
 
-    constructor(message: string, opts: { isRetryable: boolean }) {
+    constructor(message: string, opts?: { isRetryable: boolean }) {
       super(message);
-      this.isRetryable = opts.isRetryable;
+      if (opts) {
+        this.isRetryable = opts.isRetryable;
+      }
     }
   }
   return {
@@ -81,7 +83,7 @@ function makeContext(): { context: FakeContext; log: FakeLog } {
 
 async function loadTool() {
   const { context, log } = makeContext();
-  const plugin = (await CustomToolsPlugin(context)) as Hooks;
+  const plugin = (await CustomToolsPlugin(context as any)) as Hooks;
   const tool = plugin.tool?.cursor_prompt as unknown as ToolDefinition;
   if (!tool) {
     throw new Error("cursor_prompt tool not found in plugin");

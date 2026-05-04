@@ -10,11 +10,13 @@ vi.mock("@cursor/sdk", () => {
   class RateLimitError extends CursorAgentError {}
   class ConfigurationError extends CursorAgentError {}
   class NetworkError extends CursorAgentError {
-    isRetryable: boolean;
+    isRetryable?: boolean;
 
-    constructor(message: string, opts: { isRetryable: boolean }) {
+    constructor(message: string, opts?: { isRetryable: boolean }) {
       super(message);
-      this.isRetryable = opts.isRetryable;
+      if (opts) {
+        this.isRetryable = opts.isRetryable;
+      }
     }
   }
   return {

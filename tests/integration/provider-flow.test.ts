@@ -54,8 +54,10 @@ async function drain(stream: ReadableStream<any>) {
 }
 
 describe("integration: provider-flow", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    const sdk = await import("@cursor/sdk");
+    (sdk as any).__agents.length = 0;
   });
 
   afterEach(() => {

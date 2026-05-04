@@ -87,7 +87,7 @@ describe("createProviderHook.models()", () => {
     expect(result && "composer-2" in result).toBe(true);
   });
 
-  it("古い doStream でも最新の ctx から API キーを再解決する", async () => {
+  it("doStream は生成時の ctx を隔離して保持する", async () => {
     const sdk = await import("@cursor/sdk");
     vi.mocked(sdk.Cursor.models.list).mockResolvedValue([
       { id: "composer-2", name: "Composer 2", contextWindow: 200_000 } as any,
@@ -110,16 +110,19 @@ describe("createProviderHook.models()", () => {
     });
 
     const models1 = await hook.models?.("cursor" as any, ctx1);
+    // 別の ctx で models() が呼ばれても、models1 内の doStream には影響しないはず
     await hook.models?.("cursor" as any, ctx2);
+
     const streamResult = await (models1 as any)?.["composer-2"]?.doStream({
       prompt: [{ role: "user", content: [{ type: "text", text: "hello" }] }],
     });
 
     await streamResult?.stream.getReader().read();
 
-    expect(resolveApiKey).toHaveBeenLastCalledWith(ctx2);
-    expect(sdk.Agent.create).toHaveBeenLastCalledWith(
-      expect.objectContaining({ apiKey: "key-2" }),
+    // models1 から生成された doStream なので ctx1 を使うべき
+    expect(resolveApiKey).toHaveBeenCalledWith(ctx1);
+    expect(sdk.Agent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ apiKey: "key-1" }),
     );
   });
 });

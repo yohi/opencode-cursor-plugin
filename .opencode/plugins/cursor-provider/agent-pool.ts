@@ -81,7 +81,7 @@ export function createAgentPool(deps: { log: Logger; capacity: number }): AgentP
       const newKey = poolKey(fingerprint, modelId, newHash);
       const displaced = map.get(newKey);
       if (displaced && displaced.agent !== entry.agent) {
-        log.warn("cursor-provider: rekey displaced existing entry without dispose", {
+        log.warn("cursor-provider: rekey displaced existing entry; disposing displaced agent (async)", {
           modelId,
           apiKeyFingerprint: fingerprint,
         });

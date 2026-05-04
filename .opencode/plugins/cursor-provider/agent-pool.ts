@@ -19,7 +19,7 @@ export interface AgentPool {
 }
 
 export function fingerprintApiKey(apiKey: string): string {
-  return createHash("sha256").update(apiKey).digest("hex").slice(0, 16);
+  return createHash("sha256").update(apiKey).digest("hex");
 }
 
 function poolKey(fingerprint: string, modelId: string, hash: string): string {
@@ -28,6 +28,9 @@ function poolKey(fingerprint: string, modelId: string, hash: string): string {
 
 export function createAgentPool(deps: { log: Logger; capacity: number }): AgentPool {
   const { log, capacity } = deps;
+  if (!Number.isInteger(capacity) || capacity < 0) {
+    throw new RangeError("capacity must be a non-negative integer");
+  }
   const map = new Map<string, PooledAgent>();
 
   const evictIfNeeded = async () => {

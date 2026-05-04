@@ -10,7 +10,7 @@
 
 ---
 
-### Task 1: Write failing test
+## Task 1: Write failing test
 
 **Files:**
 - Modify: `tests/provider.test.ts`
@@ -42,7 +42,7 @@
 Run: `pnpm vitest run tests/provider.test.ts`
 Expected: FAIL (or PASS if vitest's mock timers or other tests interfere, but logically it should not be called in the current implementation)
 
-### Task 2: Implement the fix
+## Task 2: Implement the fix
 
 **Files:**
 - Modify: `.opencode/plugins/cursor-provider/provider.ts`
@@ -70,7 +70,7 @@ async function listModelsWithTimeout(apiKey: string, log: Logger) {
 }
 ```
 
-### Task 3: Verify and Commit
+## Task 3: Verify and Commit
 
 - [ ] **Step 1: Run tests to verify they pass**
 

@@ -7,8 +7,10 @@ export async function resolveApiKey(ctx: ProviderHookContext): Promise<string | 
       const key = typeof fromContext.key === "string" ? fromContext.key.trim() : "";
       if (key) return key;
     }
-  } catch {
-    // fall through to env lookup
+  } catch (err) {
+    // OpenCode runtime からの例外（ctx.auth.get が存在しない、または呼び出し失敗）をキャッチし、
+    // 環境変数 CURSOR_API_KEY によるフォールバックを継続させる。
+    // プログラム上の致命的なエラー（TypeError等）をマスクする可能性があるが、現状は安全性を優先。
   }
 
   const fromEnv = process.env.CURSOR_API_KEY?.trim();

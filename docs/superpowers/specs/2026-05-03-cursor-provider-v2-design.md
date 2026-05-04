@@ -121,7 +121,7 @@ interface PooledAgent {
   agent: SDKAgent;       // @cursor/sdk の Agent
   lastUsedAt: number;
   modelId: string;
-  apiKeyFingerprint: string;  // SHA-256 先頭 8 文字（識別用）
+  apiKeyFingerprint: string;  // SHA-256 先頭 16 文字（識別用）
 }
 
 interface AgentPool {
@@ -428,7 +428,7 @@ export function logError(log: Logger, err: unknown, context: Record<string, unkn
 
 ### 7.6 機微情報の非出力
 
-- API キー: 一切ログに出さない。fingerprint（SHA-256 先頭 8 文字）のみ識別用に許可
+- API キー: 一切ログに出さない。fingerprint（SHA-256 先頭 16 文字）のみ識別用に許可
 - prompt / response 本文: `length` のみログ出力
 - ハッシュ（プールキー）: 先頭 8 文字のみログ出力
 

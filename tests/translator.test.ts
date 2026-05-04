@@ -1,9 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { translate, type LanguageModelV2Prompt } from "../.opencode/plugins/cursor-provider/translator";
 
-const sys = (text: string) => ({ role: "system" as const, content: text });
-const usr = (text: string) => ({ role: "user" as const, content: [{ type: "text" as const, text }] });
-const asst = (text: string) => ({ role: "assistant" as const, content: [{ type: "text" as const, text }] });
+function sys(text: string) {
+  return { role: "system" as const, content: text };
+}
+function usr(text: string) {
+  return { role: "user" as const, content: [{ type: "text" as const, text }] };
+}
+function asst(text: string) {
+  return { role: "assistant" as const, content: [{ type: "text" as const, text }] };
+}
+
 
 describe("translate", () => {
   it("単一 user メッセージで prefixHash === hash([system]) を返す", () => {
@@ -57,4 +64,18 @@ describe("translate", () => {
     expect(result.fullPromptOnMiss).toMatch(/<assistant>R1<\/assistant>/);
     expect(result.fullPromptOnMiss.trim().endsWith("<user>U2</user>")).toBe(true);
   });
+
+  it("fullPromptOnMiss は HTML エスケープされ、非テキストパートも識別される", () => {
+    const prompt: LanguageModelV2Prompt = [
+      sys("you are <helpful>"),
+      { role: "user" as const, content: [{ type: "image", url: "http://img1" }] },
+      usr("hi & bye"),
+    ];
+    const result = translate(prompt);
+
+    expect(result.fullPromptOnMiss).toContain("&lt;helpful&gt;");
+    expect(result.fullPromptOnMiss).toContain("hi &amp; bye");
+    expect(result.fullPromptOnMiss).toContain("[image:http://img1]");
+  });
+
 });

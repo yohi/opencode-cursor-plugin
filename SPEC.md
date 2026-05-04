@@ -77,6 +77,11 @@ OpenCode のメイン LLM プロバイダーとして Cursor Headless SDK (`@cur
 - **UnknownAgentError**: プールヒット時の `pre-stream` フェーズのみ、`provider.ts` が注入した `recreateAgent` コールバック経由で新規エージェントを作り直しフルプロンプトで1回再試行します。
 - **キャンセル (AbortSignal / cancel)**: ストリーム処理中にキャンセルされた場合、エージェントは直ちに `disposeAgentSafely` 経由で破棄されます。汚染を防ぐためプールには戻しません。
 
+### 5.4 起動時のモデル一覧解決 (`provider.ts`)
+- `Cursor.models.list({ apiKey })` を 5 秒タイムアウトで実行します。
+- **リソース管理**: `Promise.race` で使用する `setTimeout` の ID を保持し、`finally` ブロックで確実に `clearTimeout` を呼び出すことで、dangling timer によるリソースリークを防止します。
+- 失敗またはタイムアウト時は、`models.ts` で定義された `STATIC_FALLBACK_MODELS` を返却します。
+
 ## 6. Tool-call 関連イベントの扱い
 - **ToolCallStartedUpdate**: Stream に text-delta として警告メッセージを **1 回のみ** 挿入し、ログ出力します。Pure LLM モードであるため、実行は行われません。
 - **PartialToolCallUpdate / ToolCallCompletedUpdate**: 無視（ドロップ）し、JSON断片がUIに漏れるのを防ぎます。

@@ -8,14 +8,14 @@ This is an OpenCode Provider plugin that exposes Cursor Headless SDK (`@cursor/s
 
 <tech_stack>
 - **Language:** TypeScript (Node.js >= 20.0.0)
-- **Package Manager:** `pnpm` (v9.12.0)
+- **Package Manager:** `pnpm` (v9.12.0) - **Do not use npm or yarn.**
 - **Testing Framework:** `vitest`
 - **Validation:** `zod`
 </tech_stack>
 
 <commands>
 To verify your changes, please use the following commands. Ideally, these should be run inside the provided Devcontainer (`.devcontainer/`).
-- Install dependencies: `pnpm install`
+- Install dependencies: `pnpm install` (**Never** use npm or yarn)
 - Type-checking: `pnpm typecheck`
 - Unit tests: `pnpm test`
 - Manual E2E helper: `pnpm test:e2e`
@@ -29,8 +29,8 @@ To keep this file lightweight (Progressive Disclosure), detailed context is exte
 </documentation_map>
 
 <guidelines>
-- **Safety First:** Please avoid committing sensitive files like `.env`, `.git`, or private keys.
-- **Verification:** Always ensure `pnpm typecheck` and `pnpm test` pass before considering a task complete.
-- **Scope:** Focus on the requested task. Avoid unrelated "cleanups" or modifying core infrastructure (like GitHub Workflows or Devcontainer configs) unless explicitly asked.
-- **Logging:** Use the custom `Logger` wrapper. Do not log sensitive values (e.g., `CURSOR_API_KEY`, full prompts/responses). Use lengths, hashes, or fingerprints for telemetry.
+- **Safety First:** **Never** stage or commit sensitive files like `.env`, `.git`, or private keys.
+- **Verification:** **Always** ensure `pnpm typecheck` and `pnpm test` pass before considering a task complete. **Do not** bypass security checks.
+- **Scope:** Focus on the requested task. **Do not** perform unrelated "cleanups" or modify core infrastructure (like GitHub Workflows or Devcontainer configs) unless explicitly asked.
+- **Logging:** Use the custom `Logger` wrapper. **Never** log sensitive values (e.g., `CURSOR_API_KEY`, full prompts/responses). Use lengths, hashes, or fingerprints for telemetry.
 </guidelines>

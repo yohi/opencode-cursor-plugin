@@ -16,8 +16,8 @@ const log = createLogger({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: 
 
 const fakeAgent = (impl: (cb: (update: any) => void) => Promise<{ status: string }>) => ({
   send: vi.fn(async (_message: string, opts: any) => {
-    const status = await impl(opts.onDelta);
-    return { wait: async () => ({ status }) };
+    const statusResult = await impl(opts.onDelta);
+    return { wait: async () => statusResult };
   }),
   close: vi.fn(),
 }) as any;

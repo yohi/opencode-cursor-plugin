@@ -67,6 +67,7 @@ describe("integration: provider-flow", () => {
     const hook = createProviderHook({ resolveApiKey: async () => "test-key", log, pool });
     const models = await hook.models?.("cursor" as any, {} as any);
     const model: any = models?.["composer-2"];
+    expect(model).toBeDefined();
 
     const first = await model.doStream({ prompt: [system("S"), user("U1")] });
     await drain(first.stream);

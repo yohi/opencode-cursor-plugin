@@ -11,6 +11,8 @@ export async function disposeAgentSafely(agent: SDKAgent, log: Logger): Promise<
 
   try {
     const disposePromise = agent[Symbol.asyncDispose]().then(() => "ok" as const);
+    // タイムアウト後に dispose が遅延 reject した場合の UnhandledPromiseRejection を抑制する
+    disposePromise.catch(() => {});
     const result = await Promise.race([disposePromise, timeoutPromise]);
 
     if (result === "timeout") {

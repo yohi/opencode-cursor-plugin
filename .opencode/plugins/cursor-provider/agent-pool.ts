@@ -32,7 +32,7 @@ export function createAgentPool(deps: { log: Logger; capacity: number }): AgentP
 
   const evictIfNeeded = async () => {
     while (map.size > capacity) {
-      const oldest = [...map.entries()].sort((a, b) => a[1].lastUsedAt - b[1].lastUsedAt)[0];
+      const oldest = [...map.entries()].reduce((min, curr) => (curr[1].lastUsedAt < min[1].lastUsedAt ? curr : min));
       if (!oldest) return;
 
       const [key, entry] = oldest;
@@ -55,6 +55,7 @@ export function createAgentPool(deps: { log: Logger; capacity: number }): AgentP
       return entry;
     },
     async put(hash, entry) {
+      entry.lastUsedAt = Date.now();
       const key = poolKey(entry.apiKeyFingerprint, entry.modelId, hash);
       const displaced = map.get(key);
 
@@ -74,8 +75,18 @@ export function createAgentPool(deps: { log: Logger; capacity: number }): AgentP
       const entry = map.get(oldKey);
       if (!entry) return;
 
+      const newKey = poolKey(fingerprint, modelId, newHash);
+      const displaced = map.get(newKey);
+      if (displaced && displaced.agent !== entry.agent) {
+        log.warn("cursor-provider: rekey displaced existing entry without dispose", {
+          modelId,
+          apiKeyFingerprint: fingerprint,
+        });
+        disposeAgentSafely(displaced.agent, log).catch(() => {});
+      }
+
       map.delete(oldKey);
-      map.set(poolKey(fingerprint, modelId, newHash), entry);
+      map.set(newKey, entry);
     },
     async delete(hash, modelId, apiKey) {
       const key = poolKey(fingerprintApiKey(apiKey), modelId, hash);

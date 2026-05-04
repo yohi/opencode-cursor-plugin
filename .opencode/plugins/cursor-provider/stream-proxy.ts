@@ -158,6 +158,8 @@ export function createStream(input: StreamProxyInput): {
         }
 
         try {
+          // @cursor/sdk@1.0.10 の SendOptions には signal がないため、abort は
+          // この proxy 側で downstream を閉じて伝播させる。
           const run = await agent.send(message, { onDelta });
           const result = await (run as any).wait();
           handleRunStatus(result);
@@ -167,21 +169,31 @@ export function createStream(input: StreamProxyInput): {
 
           if (phase === "pre-stream" && errName === "UnknownAgentError" && recreateAgent && !internalAbort.signal.aborted) {
             log.warn("stream-proxy: UnknownAgentError; retrying with new agent");
+            let recreated: { agent: SDKAgent; message: string };
             try {
-              const recreated = await recreateAgent();
+              recreated = await recreateAgent();
               agent = recreated.agent;
-              if (internalAbort.signal.aborted) {
-                safeEnqueue({ type: "finish", finishReason: "abort" });
-                safeClose();
-                return;
-              }
+            } catch (retryErr) {
+              captureErrorType(retryErr);
+              logError(log, retryErr, { phase: "create", retry: false });
+              safeEnqueue({ type: "error", error: { message: retryErr instanceof Error ? retryErr.message : String(retryErr) } });
+              safeClose();
+              return;
+            }
 
+            if (internalAbort.signal.aborted) {
+              safeEnqueue({ type: "finish", finishReason: "abort" });
+              safeClose();
+              return;
+            }
+
+            try {
               const rerun = await agent.send(recreated.message, { onDelta });
               const result = await (rerun as any).wait();
               handleRunStatus(result);
             } catch (retryErr) {
-              captureErrorType(err);
-              logError(log, retryErr, { phase: "create", retry: false });
+              captureErrorType(retryErr);
+              logError(log, retryErr, { phase: "pre-stream", retry: false });
               safeEnqueue({ type: "error", error: { message: retryErr instanceof Error ? retryErr.message : String(retryErr) } });
               safeClose();
             }

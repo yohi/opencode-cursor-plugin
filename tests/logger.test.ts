@@ -11,8 +11,17 @@ describe("createLogger", () => {
     };
     const log = createLogger(rawLog);
 
-    log.info("hello", { foo: 1 });
+log.info("hello", { foo: 1 });
     expect(rawLog.info).toHaveBeenCalledWith("hello", { foo: 1 });
+
+    log.warn("warn", { foo: 2 });
+    expect(rawLog.warn).toHaveBeenCalledWith("warn", { foo: 2 });
+
+    log.error("err", { foo: 3 });
+    expect(rawLog.error).toHaveBeenCalledWith("err", { foo: 3 });
+
+    log.debug("dbg", { foo: 4 });
+    expect(rawLog.debug).toHaveBeenCalledWith("dbg", { foo: 4 });
   });
 
   it("関数形式の rawLog には body 形式で service=cursor-provider をセットする", () => {

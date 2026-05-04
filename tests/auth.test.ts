@@ -9,7 +9,7 @@ describe("resolveApiKey", () => {
   });
 
   afterEach(() => {
-    if (original) process.env.CURSOR_API_KEY = original;
+    if (original !== undefined) process.env.CURSOR_API_KEY = original;
     else delete process.env.CURSOR_API_KEY;
   });
 

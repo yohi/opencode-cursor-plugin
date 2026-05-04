@@ -4,6 +4,33 @@ OpenCode 用 Provider プラグイン。Cursor 公式 SDK (`@cursor/sdk`) を Op
 
 詳細な設計は [docs/superpowers/specs/2026-05-03-cursor-provider-v2-design.md](./docs/superpowers/specs/2026-05-03-cursor-provider-v2-design.md) を参照してください。
 
+## AIエージェント用インストールプロンプト
+
+> [!TIP]
+> **人間は設定を打ち間違えることがあります。** このプロジェクト（プラグイン）のインストールと設定は、AIエージェント（OpenCode / Claude Code / Cursor 等）に丸投げすることを強く推奨します。
+
+<details>
+<summary><b>For Agents (AIエージェント向け手順)</b></summary>
+
+あなたがターミナル操作可能なAIエージェントであるなら、対象プロジェクトへこのプラグインをインストールするために以下の手順を自律的に遂行してください：
+
+1. **[ ] インストール方法の確認:**
+   * あなたの持つ `ask_user` 等のツールを使用して、ユーザーに「GitHub Packages 経由でインストールするか」または「ソースコードをクローンして利用するか」を質問し、方針を決定してください。
+2. **[ ] 選択に応じたセットアップの実行:**
+   * **GitHub Packages を選択した場合**:
+     1. プロジェクトルートの `.npmrc`（存在しない場合は作成）に、以下の2行を追記してください。
+        ```ini
+        @yohi:registry=https://npm.pkg.github.com
+        //npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
+        ```
+     2. ユーザーに `YOUR_GITHUB_TOKEN` を設定するよう促すか、既存의環境変数を利用してください。
+     3. プロジェクトの `opencode.json`（または `oh-my-opencode.jsonc`等）を開き、`plugins` オブジェクト内に `"@yohi/opencode-cursor-plugin": {}` を追加してください。
+   * **ソースコードから利用する場合**:
+     1. `opencode.json`（または `oh-my-opencode.jsonc`等）を開き、`plugins` 配列（またはオブジェクト）内に `.opencode/plugins/cursor-provider/index.ts` へのパスを指定する設定を追加してください。
+3. **[ ] 環境変数の設定:**
+   * プロジェクトの `.env` ファイルに `CURSOR_API_KEY` を追加するようユーザーに促すか、`opencode auth login cursor` の使用を提案してください。
+</details>
+
 ## v0.2.0 (BREAKING CHANGE)
 
 - 旧 `cursor_prompt` カスタムツールは削除されました。

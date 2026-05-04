@@ -13,13 +13,11 @@ export interface PooledAgent {
 export interface AgentPool {
   tryGet(hash: string, modelId: string, apiKey: string): PooledAgent | undefined;
   put(hash: string, agent: PooledAgent): Promise<void>;
-  rekey(fingerprint: string, modelId: string, oldHash: string, newHash: string): void;
-  delete(hash: string, modelId: string, apiKey: string): Promise<void>;
   closeAll(): Promise<void>;
 }
 
 export function fingerprintApiKey(apiKey: string): string {
-  return createHash("sha256").update(apiKey).digest("hex").slice(0, 8);
+  return createHash("sha256").update(apiKey).digest("hex");
 }
 
 function poolKey(fingerprint: string, modelId: string, hash: string): string {
@@ -28,11 +26,14 @@ function poolKey(fingerprint: string, modelId: string, hash: string): string {
 
 export function createAgentPool(deps: { log: Logger; capacity: number }): AgentPool {
   const { log, capacity } = deps;
+  if (!Number.isInteger(capacity) || capacity < 0) {
+    throw new RangeError("capacity must be a non-negative integer");
+  }
   const map = new Map<string, PooledAgent>();
 
   const evictIfNeeded = async () => {
     while (map.size > capacity) {
-      const oldest = [...map.entries()].sort((a, b) => a[1].lastUsedAt - b[1].lastUsedAt)[0];
+      const oldest = [...map.entries()].reduce((min, curr) => (curr[1].lastUsedAt < min[1].lastUsedAt ? curr : min));
       if (!oldest) return;
 
       const [key, entry] = oldest;
@@ -51,10 +52,13 @@ export function createAgentPool(deps: { log: Logger; capacity: number }): AgentP
       const entry = map.get(key);
       if (!entry) return undefined;
 
+      // Exclusive checkout: 取得したらプールから削除する
+      map.delete(key);
       entry.lastUsedAt = Date.now();
       return entry;
     },
     async put(hash, entry) {
+      entry.lastUsedAt = Date.now();
       const key = poolKey(entry.apiKeyFingerprint, entry.modelId, hash);
       const displaced = map.get(key);
 
@@ -68,22 +72,6 @@ export function createAgentPool(deps: { log: Logger; capacity: number }): AgentP
       }
 
       await evictIfNeeded();
-    },
-    rekey(fingerprint, modelId, oldHash, newHash) {
-      const oldKey = poolKey(fingerprint, modelId, oldHash);
-      const entry = map.get(oldKey);
-      if (!entry) return;
-
-      map.delete(oldKey);
-      map.set(poolKey(fingerprint, modelId, newHash), entry);
-    },
-    async delete(hash, modelId, apiKey) {
-      const key = poolKey(fingerprintApiKey(apiKey), modelId, hash);
-      const entry = map.get(key);
-      if (!entry) return;
-
-      map.delete(key);
-      await disposeAgentSafely(entry.agent, log);
     },
     async closeAll() {
       const entries = [...map.values()];

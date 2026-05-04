@@ -17,17 +17,20 @@ const CursorProviderPlugin: Plugin = async ({ client }) => {
   const pool = createAgentPool({ log, capacity: POOL_CAPACITY });
 
   const cleanup = async () => {
+    let timeoutId: NodeJS.Timeout | undefined;
     try {
       await Promise.race([
         pool.closeAll(),
         new Promise<void>((resolve) => {
-          setTimeout(resolve, CLOSEALL_TIMEOUT_MS);
+          timeoutId = setTimeout(resolve, CLOSEALL_TIMEOUT_MS);
         }),
       ]);
     } catch (err) {
       log.warn("cursor-provider: closeAll failed", {
         errorType: err instanceof Error ? err.constructor.name : typeof err,
       });
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
     }
   };
 

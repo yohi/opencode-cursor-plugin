@@ -16,8 +16,8 @@ const log = createLogger({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: 
 
 const fakeAgent = (impl: (cb: (update: any) => void) => Promise<{ status: string }>) => ({
   send: vi.fn(async (_message: string, opts: any) => {
-    const status = await impl(opts.onDelta);
-    return { wait: async () => ({ status }) };
+    const statusResult = await impl(opts.onDelta);
+    return { wait: async () => statusResult };
   }),
   close: vi.fn(),
 }) as any;
@@ -250,7 +250,29 @@ describe("stream-proxy", () => {
     const parts = await collect(stream);
 
     expect(parts.some((part) => part.type === "error")).toBe(true);
-    await expect(done).resolves.toEqual({ finishReason: "error", errorType: "UnknownAgentError" });
+    await expect(done).resolves.toEqual({ finishReason: "error", errorType: "Error" });
+  });
+
+  it("UnknownAgentError + recreateAgent 後に新 agent.send が失敗したら retryErr の型と pre-stream phase を記録する", async () => {
+    const { UnknownAgentError, AuthenticationError } = await import("@cursor/sdk");
+    const rawLog = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+    const localLog = createLogger(rawLog);
+    const err = new UnknownAgentError("agent gone");
+    const retryErr = new AuthenticationError("expired");
+    const oldAgent = { send: vi.fn(async () => { throw err; }), close: vi.fn() } as any;
+    const newAgent = { send: vi.fn(async () => { throw retryErr; }), close: vi.fn() } as any;
+    const recreateAgent = vi.fn(async () => ({ agent: newAgent, message: "full-prompt" }));
+
+    const { stream, done } = createStream({ agent: oldAgent, message: "m", log: localLog, recreateAgent });
+    const parts = await collect(stream);
+
+    expect(parts.some((part) => part.type === "error")).toBe(true);
+    await expect(done).resolves.toEqual({ finishReason: "error", errorType: "AuthenticationError" });
+    expect(newAgent.send).toHaveBeenCalledWith("full-prompt", expect.any(Object));
+    expect(rawLog.error.mock.calls).toContainEqual([
+      "cursor-provider: error captured",
+      expect.objectContaining({ phase: "pre-stream", errorType: "AuthenticationError" }),
+    ]);
   });
 
   it("UnknownAgentError + recreateAgent 実行中に abort されたら新 agent.send は呼ばれず finishReason='abort' で終端する", async () => {

@@ -19,7 +19,7 @@ export interface AgentPool {
 }
 
 export function fingerprintApiKey(apiKey: string): string {
-  return createHash("sha256").update(apiKey).digest("hex").slice(0, 8);
+  return createHash("sha256").update(apiKey).digest("hex").slice(0, 16);
 }
 
 function poolKey(fingerprint: string, modelId: string, hash: string): string {

@@ -54,6 +54,14 @@ async function drain(stream: ReadableStream<any>) {
 }
 
 describe("integration: provider-flow", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("プールミス → put、続いてプールヒット → rekey", async () => {
     const pool = createAgentPool({ log, capacity: 8 });
     const hook = createProviderHook({ resolveApiKey: async () => "test-key", log, pool });
@@ -62,10 +70,11 @@ describe("integration: provider-flow", () => {
 
     const first = await model.doStream({ prompt: [system("S"), user("U1")] });
     await drain(first.stream);
-    await new Promise((resolve) => setTimeout(resolve, 0));
 
     const sdk = await import("@cursor/sdk");
-    expect((sdk as any).__agents.length).toBe(1);
+    await vi.waitFor(() => {
+      expect((sdk as any).__agents.length).toBe(1);
+    });
 
     const second = await model.doStream({
       prompt: [system("S"), user("U1"), { role: "assistant", content: [{ type: "text", text: "R1" }] }, user("U2")],
@@ -86,11 +95,12 @@ describe("integration: provider-flow", () => {
     for (const prompt of ["U1", "U2", "U3"]) {
       const result = await model.doStream({ prompt: [system("S"), user(prompt)] });
       await drain(result.stream);
-      await new Promise((resolve) => setTimeout(resolve, 0));
     }
 
-    const createdInTest = (sdk as any).__agents.slice(beforeAgents);
-    expect(createdInTest[0][Symbol.asyncDispose]).toHaveBeenCalled();
+    await vi.waitFor(() => {
+      const createdInTest = (sdk as any).__agents.slice(beforeAgents);
+      expect(createdInTest[0][Symbol.asyncDispose]).toHaveBeenCalled();
+    });
   });
 
   it("キャンセル後の次ターンで前ターンと別 agent が生成される", async () => {
@@ -124,24 +134,29 @@ describe("integration: provider-flow", () => {
       return agent;
     });
 
-    const pool = createAgentPool({ log, capacity: 8 });
-    const hook = createProviderHook({ resolveApiKey: async () => "test-key", log, pool });
-    const models = await hook.models?.("cursor" as any, {} as any);
-    const model: any = models?.["composer-2"];
+    try {
+      const pool = createAgentPool({ log, capacity: 8 });
+      const hook = createProviderHook({ resolveApiKey: async () => "test-key", log, pool });
+      const models = await hook.models?.("cursor" as any, {} as any);
+      const model: any = models?.["composer-2"];
 
-    const controller = new AbortController();
-    const first = await model.doStream({ prompt: [system("S"), user("U1")], abortSignal: controller.signal });
-    controller.abort();
-    await drain(first.stream);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+      const controller = new AbortController();
+      const first = await model.doStream({ prompt: [system("S"), user("U1")], abortSignal: controller.signal });
+      controller.abort();
+      await drain(first.stream);
 
-    const before = (sdk as any).__agents.length;
+      const before = (sdk as any).__agents.length;
 
-    const second = await model.doStream({
-      prompt: [system("S"), user("U1"), { role: "assistant", content: [{ type: "text", text: "R1" }] }, user("U2")],
-    });
-    await drain(second.stream);
+      const second = await model.doStream({
+        prompt: [system("S"), user("U1"), { role: "assistant", content: [{ type: "text", text: "R1" }] }, user("U2")],
+      });
+      await drain(second.stream);
 
-    expect((sdk as any).__agents.length).toBe(before + 1);
+      await vi.waitFor(() => {
+        expect((sdk as any).__agents.length).toBe(before + 1);
+      });
+    } finally {
+      originalCreate.mockRestore();
+    }
   });
 });

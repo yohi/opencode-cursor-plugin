@@ -2,8 +2,7 @@
 set -euo pipefail
 
 if [[ -z "${CURSOR_API_KEY:-}" ]]; then
-  echo "ERROR: CURSOR_API_KEY が未設定です" >&2
-  exit 1
+  echo "INFO: CURSOR_API_KEY が未設定です。実際の API 呼び出しを含む場合は設定が必要です。"
 fi
 
 echo "[E2E] cursor-provider 手動 E2E"

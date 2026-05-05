@@ -4,7 +4,7 @@
 
 ## 1. 目的とスコープ
 
-OpenCode のメイン LLM プロバイダーとして Cursor Headless SDK (`@cursor/sdk`) を直接利用できるようにします。旧 `cursor_prompt` カスタムツールは廃止されました。
+OpenCode のメイン LLM プロバイダーとして Cursor Headless SDK (`@cursor-provider/sdk`) を直接利用できるようにします。旧 `cursor_prompt` カスタムツールは廃止されました。
 
 ### スコープ外
 - Cursor アカウントの OAuth 自動ログイン
@@ -21,7 +21,7 @@ OpenCode のメイン LLM プロバイダーとして Cursor Headless SDK (`@cur
 | プールライフサイクル | LRU 上限 8、Exclusive Checkout、close 5 秒タイムアウト | 予測可能でリソース漏洩や並列利用時の破損なし |
 | ストリームイベント | text 通常 / thinking → reasoning / tool-call → 警告 | Cursor の表現力を活用しつつ Pure LLM 建前を可視化 |
 | 認証 | env var + `AuthHook`（api タイプ） | UX 改善。OAuth はスコープ外 |
-| 命名 | `id="cursor"` / default `composer-2` | Cursor ドキュメントと一致 |
+| 命名 | `id="cursor-provider"` / default `composer-2` | Cursor ドキュメントと一致 |
 
 ## 3. アーキテクチャ概要
 
@@ -37,7 +37,7 @@ OpenCode のメイン LLM プロバイダーとして Cursor Headless SDK (`@cur
        ▼ Map<modelId, ModelV2> を返却
 
 [OpenCode 推論時]
-  │ ④ ユーザーが cursor/composer-2 等を選択して実行
+  │ ④ ユーザーが cursor-provider/composer-2 等を選択して実行
   ▼
 [StreamProxy & AgentPool]
   │ ⑤ Translator: messages → 履歴ハッシュ + last user msg

@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createLogger } from "../.opencode/plugins/cursor-provider/logger";
+import { createLogger } from "../.opencode/plugins/cursor-provider/logger.js";
 import {
   createAgentPool,
   fingerprintApiKey,
-} from "../.opencode/plugins/cursor-provider/agent-pool";
+} from "../.opencode/plugins/cursor-provider/agent-pool.js";
 
 const log = createLogger({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() });
 

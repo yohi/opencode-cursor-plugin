@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { cursorAuthHook, resolveApiKey } from "../.opencode/plugins/cursor-provider/auth";
+import { cursorAuthHook, resolveApiKey } from "../.opencode/plugins/cursor-provider/auth.js";
 
 describe("resolveApiKey", () => {
   const original = process.env.CURSOR_API_KEY;
@@ -40,9 +40,9 @@ describe("resolveApiKey", () => {
 
 describe("cursorAuthHook", () => {
   it("methods に api タイプを含み、prompts は key 1 件", () => {
-    expect(cursorAuthHook.methods.some((method) => method.type === "api")).toBe(true);
+    expect(cursorAuthHook.methods.some((method: any) => method.type === "api")).toBe(true);
 
-    const apiMethod = cursorAuthHook.methods.find((method) => method.type === "api");
+    const apiMethod = cursorAuthHook.methods.find((method: any) => method.type === "api");
     expect(apiMethod?.prompts).toHaveLength(1);
     expect(apiMethod?.prompts?.[0]).toMatchObject({ key: "key", type: "text" });
   });

@@ -21,15 +21,13 @@ type RawLogFn = (payload: {
 export function createLogger(rawLog: RawLogMethods | RawLogFn, service = "cursor-provider"): Logger {
   const dispatch = (level: Level, message: string, extra?: Record<string, unknown>) => {
     const method = rawLog as RawLogMethods;
-    const targetFn =
-      level === "info" ? method.info :
-      level === "warn" ? method.warn :
-      level === "error" ? method.error :
-      method.debug;
-
+    const targetFn = level === "info" ? method.info :
+        level === "warn" ? method.warn :
+            level === "error" ? method.error :
+                method.debug;
     if (typeof targetFn === "function") {
-      targetFn(message, extra);
-      return;
+        targetFn.call(method, message, extra);
+        return;
     }
 
     // Fallback to info if the specific level is missing

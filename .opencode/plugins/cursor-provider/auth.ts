@@ -1,24 +1,19 @@
-import type { AuthHook, ProviderHookContext } from "@opencode-ai/plugin";
-
-export async function resolveApiKey(ctx: ProviderHookContext): Promise<string | undefined> {
+export async function resolveApiKey(ctx: any): Promise<string | undefined> {
   try {
-    const fromContext = await (ctx.auth as any)?.get?.("cursor");
+    const fromContext = await ctx.auth?.get?.("cursor-provider");
     if (fromContext?.type === "api") {
       const key = typeof fromContext.key === "string" ? fromContext.key.trim() : "";
       if (key) return key;
     }
   } catch (err) {
-    // OpenCode runtime からの例外（ctx.auth.get が存在しない、または呼び出し失敗）をキャッチし、
-    // 環境変数 CURSOR_API_KEY によるフォールバックを継続させる。
-    // プログラム上の致命的なエラー（TypeError等）をマスクする可能性があるが、現状は安全性を優先。
   }
 
   const fromEnv = process.env.CURSOR_API_KEY?.trim();
   return fromEnv ? fromEnv : undefined;
 }
 
-export const cursorAuthHook: AuthHook = {
-  provider: "cursor",
+export const cursorAuthHook: any = {
+  provider: "cursor-provider",
   methods: [
     {
       type: "api",

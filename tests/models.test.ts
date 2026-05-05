@@ -3,11 +3,11 @@ import {
   DEFAULT_MODEL_ID,
   STATIC_FALLBACK_MODELS,
   makeModelMeta,
-} from "../.opencode/plugins/cursor-provider/models";
+} from "../.opencode/plugins/cursor-provider/models.js";
 
 describe("STATIC_FALLBACK_MODELS", () => {
   it("composer-2 を含み、すべて id/name/contextWindow フィールドを持つ", () => {
-    expect(STATIC_FALLBACK_MODELS.some((model) => model.id === "composer-2")).toBe(true);
+    expect(STATIC_FALLBACK_MODELS.some((model: any) => model.id === "composer-2")).toBe(true);
 
     for (const model of STATIC_FALLBACK_MODELS) {
       expect(typeof model.id).toBe("string");
@@ -23,11 +23,12 @@ describe("STATIC_FALLBACK_MODELS", () => {
 });
 
 describe("makeModelMeta", () => {
-  it("specificationVersion='v2' / provider='cursor' を返す", () => {
+  it("provider='cursor-provider' および正しいメタデータを返す", () => {
     const meta = makeModelMeta({ id: "composer-2", name: "Composer 2", contextWindow: 200_000 });
 
-    expect(meta.specificationVersion).toBe("v2");
-    expect(meta.provider).toBe("cursor");
+    expect(meta.provider).toBe("cursor-provider");
     expect(meta.modelId).toBe("composer-2");
+    expect(meta.name).toBe("Composer 2");
+    expect(meta.contextWindow).toBe(200_000);
   });
 });

@@ -1,17 +1,7 @@
-import { Agent, Cursor } from "@cursor/sdk";
-import type { ProviderHook, ProviderHookContext } from "@opencode-ai/plugin";
-import { disposeAgentSafely } from "./agent-cleanup";
-import type { AgentPool } from "./agent-pool";
-import { fingerprintApiKey } from "./agent-pool";
-import { classifyError, logError } from "./errors";
-import type { Logger } from "./logger";
-import { STATIC_FALLBACK_MODELS, makeModelMeta } from "./models";
-import { createStream } from "./stream-proxy";
-import { translate } from "./translator";
-
 const MODELS_LIST_TIMEOUT_MS = 5_000;
 
-async function listModelsWithTimeout(apiKey: string, log: Logger) {
+async function listModelsWithTimeout(apiKey: string, log: any) {
+  const { Cursor } = await import("@cursor/sdk");
   let timeoutId: NodeJS.Timeout | undefined;
   try {
     return await Promise.race([
@@ -31,16 +21,17 @@ async function listModelsWithTimeout(apiKey: string, log: Logger) {
 }
 
 export function createProviderHook(deps: {
-  resolveApiKey: (ctx: ProviderHookContext) => Promise<string | undefined>;
-  log: Logger;
-  pool: AgentPool;
-}): ProviderHook {
+  resolveApiKey: (ctx: any) => Promise<string | undefined>;
+  log: any;
+  pool: any;
+}): any {
   const { resolveApiKey, log, pool } = deps;
   let warnedParamsOnce = false;
 
   return {
-    id: "cursor",
-    async models(_provider: any, ctx: ProviderHookContext) {
+    id: "cursor-provider",
+    async models(_provider: any, ctx: any) {
+      const { STATIC_FALLBACK_MODELS, makeModelMeta } = await import("./models.js");
       const apiKey = await resolveApiKey(ctx);
       const dynamicModels = apiKey ? await listModelsWithTimeout(apiKey, log) : null;
       const sourceModels = dynamicModels ?? STATIC_FALLBACK_MODELS;
@@ -57,12 +48,25 @@ export function createProviderHook(deps: {
           ...meta,
           async doStream(args: any) {
             const currentApiKey = await resolveApiKey(ctx);
+            const [{ translate }, { fingerprintApiKey }, { createStream }, { disposeAgentSafely }, { logError }] = await Promise.all([
+              import("./translator.js"),
+              import("./agent-pool.js"),
+              import("./stream-proxy.js"),
+              import("./agent-cleanup.js"),
+              import("./errors.js"),
+            ]);
+
             return runDoStream({
               args,
               modelId: model.id,
               apiKey: currentApiKey,
               log,
               pool,
+              translate,
+              fingerprintApiKey,
+              createStream,
+              disposeAgentSafely,
+              logError,
               warnState: {
                 hasWarned: () => warnedParamsOnce,
                 markWarned: () => {
@@ -79,18 +83,11 @@ export function createProviderHook(deps: {
   };
 }
 
-async function runDoStream(opts: {
-  args: { prompt: any; abortSignal?: AbortSignal; chatParams?: any };
-  modelId: string;
-  apiKey: string | undefined;
-  log: Logger;
-  pool: AgentPool;
-  warnState: { hasWarned: () => boolean; markWarned: () => void };
-}) {
-  const { args, modelId, apiKey, log, pool, warnState } = opts;
+async function runDoStream(opts: any) {
+  const { args, modelId, apiKey, log, pool, translate, fingerprintApiKey, createStream, disposeAgentSafely, logError, warnState } = opts;
   if (!apiKey) {
     log.error("cursor-provider: doStream invoked without API key");
-    throw new Error("Cursor API key is not set; run 'opencode auth login cursor' or export CURSOR_API_KEY");
+    throw new Error("Cursor API key is not set; run 'opencode auth login cursor-provider' or export CURSOR_API_KEY");
   }
 
   if (!warnState.hasWarned() && args.chatParams && Object.keys(args.chatParams).length > 0) {
@@ -103,7 +100,6 @@ async function runDoStream(opts: {
   const translated = translate(args.prompt);
   const fingerprint = fingerprintApiKey(apiKey);
   const hit = pool.tryGet(translated.prefixHash, modelId, apiKey);
-  const wasMiss = !hit;
   let agent: any;
   let messageToSend: string;
 
@@ -136,7 +132,7 @@ async function runDoStream(opts: {
   });
 
   void done
-    .then(async ({ finishReason, errorType }) => {
+    .then(async ({ finishReason, errorType }: any) => {
       const finalAgent = replacedAgent || agent;
       if (finishReason === "stop") {
         await pool.put(translated.nextHash, {
@@ -154,14 +150,16 @@ async function runDoStream(opts: {
 
       await disposeAgentSafely(finalAgent, log);
     })
-    .catch((err) => {
+    .catch((err: any) => {
       logError(log, err, { phase: "post-stream" });
     });
 
   return { stream };
 }
 
-async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log: Logger }) {
+async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log: any }) {
+  const { Agent } = await import("@cursor/sdk");
+  const { classifyError, logError } = await import("./errors.js");
   const { apiKey, modelId, log } = deps;
   try {
     return await Agent.create({ apiKey, model: { id: modelId }, local: { cwd: process.cwd() } });

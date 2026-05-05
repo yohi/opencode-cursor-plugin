@@ -1,40 +1,16 @@
-import type { SDKAgent } from "@cursor/sdk";
-import type { Logger } from "./logger";
-import { classifyError, logError } from "./errors";
-
-export interface StreamProxyInput {
-  agent: SDKAgent;
-  message: string;
-  log: Logger;
-  abortSignal?: AbortSignal;
-  recreateAgent?: () => Promise<{ agent: SDKAgent; message: string }>;
-}
-
 const toolWarning = (name: string) =>
   `⚠️ [cursor-provider] Cursor agent attempted to use tool: ${name}. Pure LLM mode is in effect; the tool call is surfaced for visibility but not executed by OpenCode.`;
 
-export type StreamFinishReason = "stop" | "abort" | "error";
-
-export type StreamErrorType =
-  | "UnknownAgentError"
-  | "NetworkError"
-  | "AuthenticationError"
-  | "RateLimitError"
-  | "ConfigurationError"
-  | "IntegrationNotConnectedError"
-  | "CursorSdkError"
-  | "Error";
-
-export function createStream(input: StreamProxyInput): {
+export function createStream(input: any): {
   stream: ReadableStream<any>;
-  done: Promise<{ finishReason: StreamFinishReason; errorType?: StreamErrorType }>;
+  done: Promise<any>;
 } {
   const { agent: initialAgent, message, log, abortSignal, recreateAgent } = input;
   let agent = initialAgent;
   let hasClosedStream = false;
   let hasEmittedDelta = false;
-  let finishReason: StreamFinishReason | null = null;
-  let lastErrorType: StreamErrorType | undefined;
+  let finishReason: string | null = null;
+  let lastErrorType: string | undefined;
   let controller!: ReadableStreamDefaultController<any>;
   const warnedToolCallIds = new Set<string>();
   const internalAbort = new AbortController();
@@ -45,13 +21,13 @@ export function createStream(input: StreamProxyInput): {
     internalAbort.abort();
   }
 
-  const setFinishReason = (reason: StreamFinishReason) => {
+  const setFinishReason = (reason: string) => {
     if (finishReason === null) finishReason = reason;
   };
 
   const captureErrorType = (err: unknown) => {
-    const name = err instanceof Error ? err.constructor.name : "Error";
-    lastErrorType = (name || "Error") as StreamErrorType;
+    const name = (err as any)?.constructor?.name || (err as any)?.name || "Error";
+    lastErrorType = name;
   };
 
   const safeEnqueue = (part: any) => {
@@ -129,8 +105,8 @@ export function createStream(input: StreamProxyInput): {
     safeClose();
   };
 
-  let resolveDone!: (value: { finishReason: StreamFinishReason; errorType?: StreamErrorType }) => void;
-  const done = new Promise<{ finishReason: StreamFinishReason; errorType?: StreamErrorType }>((resolve) => {
+  let resolveDone!: (value: any) => void;
+  const done = new Promise<any>((resolve) => {
     resolveDone = resolve;
   });
 
@@ -147,6 +123,8 @@ export function createStream(input: StreamProxyInput): {
       internalAbort.signal.addEventListener("abort", onAbort);
 
       void (async () => {
+        const { classifyError, logError } = await import("./errors.js");
+
         if (internalAbort.signal.aborted) {
           internalAbort.signal.removeEventListener("abort", onAbort);
           abortSignal?.removeEventListener("abort", onExternalAbort);
@@ -158,25 +136,23 @@ export function createStream(input: StreamProxyInput): {
         }
 
         try {
-          // @cursor/sdk@1.0.10 の SendOptions には signal がないため、abort は
-          // この proxy 側で downstream を閉じて伝播させる。
           const run = await agent.send(message, { onDelta });
           const result = await (run as any).wait();
           handleRunStatus(result);
-        } catch (err) {
+        } catch (err: any) {
           const phase = hasEmittedDelta ? "in-stream" : "pre-stream";
-          const errName = err instanceof Error ? err.constructor.name : "Error";
+          const errName = err?.constructor?.name || err?.name || "Error";
 
           if (phase === "pre-stream" && errName === "UnknownAgentError" && recreateAgent && !internalAbort.signal.aborted) {
             log.warn("stream-proxy: UnknownAgentError; retrying with new agent");
-            let recreated: { agent: SDKAgent; message: string };
+            let recreated: { agent: any; message: string };
             try {
               recreated = await recreateAgent();
               agent = recreated.agent;
-            } catch (retryErr) {
+            } catch (retryErr: any) {
               captureErrorType(retryErr);
               logError(log, retryErr, { phase: "create", retry: false });
-              safeEnqueue({ type: "error", error: { message: retryErr instanceof Error ? retryErr.message : String(retryErr) } });
+              safeEnqueue({ type: "error", error: { message: retryErr?.message || String(retryErr) } });
               safeClose();
               return;
             }
@@ -191,10 +167,10 @@ export function createStream(input: StreamProxyInput): {
               const rerun = await agent.send(recreated.message, { onDelta });
               const result = await (rerun as any).wait();
               handleRunStatus(result);
-            } catch (retryErr) {
+            } catch (retryErr: any) {
               captureErrorType(retryErr);
               logError(log, retryErr, { phase: "pre-stream", retry: false });
-              safeEnqueue({ type: "error", error: { message: retryErr instanceof Error ? retryErr.message : String(retryErr) } });
+              safeEnqueue({ type: "error", error: { message: retryErr?.message || String(retryErr) } });
               safeClose();
             }
             return;
@@ -204,7 +180,7 @@ export function createStream(input: StreamProxyInput): {
           logError(log, err, { phase, retry: decision.retry });
           if (!decision.retry) {
             captureErrorType(err);
-            safeEnqueue({ type: "error", error: { message: err instanceof Error ? err.message : String(err) } });
+            safeEnqueue({ type: "error", error: { message: err?.message || String(err) } });
             safeClose();
           } else {
             await new Promise((resolve) => setTimeout(resolve, decision.delayMs));
@@ -216,9 +192,9 @@ export function createStream(input: StreamProxyInput): {
                 const rerun = await agent.send(message, { onDelta });
                 const result = await (rerun as any).wait();
                 handleRunStatus(result);
-              } catch (retryErr) {
+              } catch (retryErr: any) {
                 captureErrorType(retryErr);
-                safeEnqueue({ type: "error", error: { message: retryErr instanceof Error ? retryErr.message : String(retryErr) } });
+                safeEnqueue({ type: "error", error: { message: retryErr?.message || String(retryErr) } });
                 safeClose();
               }
             }

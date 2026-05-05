@@ -1,13 +1,4 @@
-import {
-  AuthenticationError,
-  ConfigurationError,
-  CursorSdkError,
-  IntegrationNotConnectedError,
-  NetworkError,
-  RateLimitError,
-  UnknownAgentError,
-} from "@cursor/sdk";
-import type { Logger } from "./logger";
+import type { Logger } from "./logger.js";
 
 export type RetryPhase = "create" | "pre-stream" | "in-stream" | "post-stream";
 
@@ -21,43 +12,33 @@ function noRetry(reason: string): RetryDecision {
   return { retry: false, delayMs: 0, reason };
 }
 
+export function classifyError(err: any, ctx: { phase: RetryPhase }): RetryDecision {
+  // Cursor SDK のクラスを直接 instanceof でチェックするとインポート時の副作用で落ちるため、
+  // エラーのプロパティや .name で判別する。
+  const errorName = err?.constructor?.name || err?.name;
 
-export function classifyError(err: unknown, ctx: { phase: RetryPhase }): RetryDecision {
-  if (err instanceof NetworkError) {
-    // We consider any NetworkError retryable in early phases (pre-delivery).
+  if (errorName === "NetworkError" || err?.isRetryable === true) {
     if (ctx.phase === "create" || ctx.phase === "pre-stream") {
       return { retry: true, delayMs: 500, reason: "NetworkError safe to retry pre-delivery" };
     }
-
-    // In later phases, we NEVER retry to avoid duplicating stream parts, 
-    // even if the SDK marks it as retryable.
     return noRetry("NetworkError after delivery would duplicate stream");
   }
 
-  if (err instanceof AuthenticationError) return noRetry("AuthenticationError");
-  if (err instanceof ConfigurationError) return noRetry("ConfigurationError");
-  if (err instanceof RateLimitError) {
+  if (errorName === "AuthenticationError") return noRetry("AuthenticationError");
+  if (errorName === "ConfigurationError") return noRetry("ConfigurationError");
+  if (errorName === "RateLimitError") {
     return { retry: true, delayMs: 2000, reason: "RateLimitError with backoff" };
   }
 
-  if (err instanceof IntegrationNotConnectedError) return noRetry("IntegrationNotConnectedError");
-  if (err instanceof UnknownAgentError) return noRetry("UnknownAgentError handled by caller");
-  if (err instanceof CursorSdkError) return noRetry("CursorSdkError");
+  if (errorName === "IntegrationNotConnectedError") return noRetry("IntegrationNotConnectedError");
+  if (errorName === "UnknownAgentError") return noRetry("UnknownAgentError handled by caller");
+  if (errorName === "CursorSdkError") return noRetry("CursorSdkError");
 
   return noRetry("unknown");
 }
 
-export function logError(log: Logger, err: unknown, context: Record<string, unknown>): void {
-  const errorType =
-    err instanceof AuthenticationError ? "AuthenticationError"
-      : err instanceof ConfigurationError ? "ConfigurationError"
-        : err instanceof RateLimitError ? "RateLimitError"
-          : err instanceof NetworkError ? "NetworkError"
-            : err instanceof IntegrationNotConnectedError ? "IntegrationNotConnectedError"
-              : err instanceof UnknownAgentError ? "UnknownAgentError"
-                : err instanceof CursorSdkError ? "CursorSdkError"
-                  : err instanceof Error ? err.constructor.name
-                    : typeof err;
+export function logError(log: Logger, err: any, context: Record<string, unknown>): void {
+  const errorType = err?.constructor?.name || err?.name || typeof err;
   const messageLength = err instanceof Error ? err.message.length : 0;
 
   const allowedKeys = ["phase", "requestId", "status", "userId", "model"];
@@ -70,5 +51,4 @@ export function logError(log: Logger, err: unknown, context: Record<string, unkn
     errorType,
     messageLength,
   });
-
 }

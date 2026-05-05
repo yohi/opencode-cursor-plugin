@@ -6,36 +6,34 @@
     "registry": "https://npm.pkg.github.com"
   },
   "type": "module",
-  "main": ".opencode/plugins/cursor-provider/index.ts",
+  "main": "dist/.opencode/plugins/cursor-provider/index.js",
   "exports": {
-    ".": "./.opencode/plugins/cursor-provider/index.ts"
+    ".": "./dist/.opencode/plugins/cursor-provider/index.js"
   },
   "files": [
-    ".opencode/plugins"
+    "dist"
   ],
   "engines": {
     "node": ">=20.0.0",
     "pnpm": ">=9.12.0"
   },
   "scripts": {
+    "build": "tsc",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "bash scripts/e2e-cursor-provider.sh"
   },
   "dependencies": {
+    "@opencode-ai/plugin": "^1.14.30",
     "@cursor/sdk": "^1.0.10",
     "dotenv": "^16.4.5",
     "zod": "^4.1.8"
   },
   "devDependencies": {
-    "@opencode-ai/plugin": "^1.14.30",
     "@types/node": "^20.14.0",
     "typescript": "^5.5.0",
     "vitest": "^1.6.0"
-  },
-  "peerDependencies": {
-    "@opencode-ai/plugin": "^1.14.30"
   },
   "pnpm": {
     "//": "The overrides below are security patches for known vulnerabilities",

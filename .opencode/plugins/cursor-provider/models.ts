@@ -14,7 +14,7 @@ export const STATIC_FALLBACK_MODELS: ReadonlyArray<FallbackModel> = [
 
 export interface ModelMeta {
   specificationVersion: "v2";
-  provider: "cursor";
+  provider: "cursor-provider";
   modelId: string;
   name: string;
   contextWindow: number;
@@ -23,7 +23,7 @@ export interface ModelMeta {
 export function makeModelMeta(model: FallbackModel): ModelMeta {
   return {
     specificationVersion: "v2",
-    provider: "cursor",
+    provider: "cursor-provider",
     modelId: model.id,
     name: model.name,
     contextWindow: model.contextWindow,

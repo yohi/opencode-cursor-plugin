@@ -2,7 +2,9 @@ import type { Plugin } from "@opencode-ai/plugin";
 import { config as loadDotenv } from "dotenv";
 import { resolveApiKey, cursorAuthHook } from "./auth";
 import { createAgentPool } from "./agent-pool";
+import { ensureCursorProviderConfig } from "./config";
 import { createLogger } from "./logger";
+import { startOpenAiProxy } from "./openai-proxy";
 import { createProviderHook } from "./provider";
 
 const POOL_CAPACITY = 8;
@@ -15,12 +17,13 @@ const CursorProviderPlugin: Plugin = async ({ client }) => {
 
   const log = createLogger((client.app as any).log);
   const pool = createAgentPool({ log, capacity: POOL_CAPACITY });
+  const proxy = await startOpenAiProxy(log);
 
   const cleanup = async () => {
     let timeoutId: NodeJS.Timeout | undefined;
     try {
       await Promise.race([
-        pool.closeAll(),
+        Promise.all([pool.closeAll(), proxy.close()]),
         new Promise<void>((resolve) => {
           timeoutId = setTimeout(resolve, CLOSEALL_TIMEOUT_MS);
         }),
@@ -47,6 +50,9 @@ const CursorProviderPlugin: Plugin = async ({ client }) => {
   }
 
   return {
+    config: async (config) => {
+      ensureCursorProviderConfig(config, { baseURL: proxy.baseURL });
+    },
     auth: cursorAuthHook,
     provider: createProviderHook({ resolveApiKey, log, pool }),
   };

@@ -23,11 +23,16 @@ describe("STATIC_FALLBACK_MODELS", () => {
 });
 
 describe("makeModelMeta", () => {
-  it("specificationVersion='v2' / provider='cursor' を返す", () => {
+  it("OpenCode SDK v2 Model 互換のメタデータを返す", () => {
     const meta = makeModelMeta({ id: "composer-2", name: "Composer 2", contextWindow: 200_000 });
 
-    expect(meta.specificationVersion).toBe("v2");
-    expect(meta.provider).toBe("cursor");
-    expect(meta.modelId).toBe("composer-2");
+    expect(meta.id).toBe("composer-2");
+    expect(meta.providerID).toBe("cursor");
+    expect(meta.api.id).toBe("cursor");
+    expect(meta.limit.context).toBe(200_000);
+    expect(meta.limit.output).toBeGreaterThan(0);
+    expect(meta.status).toBe("active");
+    expect(meta.capabilities.input.text).toBe(true);
+    expect(meta.capabilities.output.text).toBe(true);
   });
 });

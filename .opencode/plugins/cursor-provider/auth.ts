@@ -19,6 +19,11 @@ export async function resolveApiKey(ctx: ProviderHookContext): Promise<string | 
 
 export const cursorAuthHook: AuthHook = {
   provider: "cursor",
+  async loader(getAuth) {
+    const auth = await getAuth();
+    const key = typeof (auth as any)?.key === "string" ? (auth as any).key.trim() : "";
+    return { apiKey: key || process.env.CURSOR_API_KEY || "cursor" };
+  },
   methods: [
     {
       type: "api",

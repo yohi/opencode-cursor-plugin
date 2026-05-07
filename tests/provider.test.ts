@@ -41,6 +41,58 @@ describe("createProviderHook.models()", () => {
     expect(result && "composer-2" in result).toBe(true);
   });
 
+  it("OpenCode SDK v2 の Model 形状でモデルメタデータを返す", async () => {
+    const sdk = await import("@cursor/sdk");
+    vi.mocked(sdk.Cursor.models.list).mockResolvedValue([
+      { id: "composer-2", name: "Composer 2", contextWindow: 200_000 } as any,
+    ]);
+
+    const hook = createProviderHook({
+      resolveApiKey: async () => "key",
+      log,
+      pool: createAgentPool({ log, capacity: 8 }),
+    });
+
+    const ctx: any = { auth: { get: async () => undefined } };
+    const result = await hook.models?.("cursor" as any, ctx);
+    expect(result?.["composer-2"]).toMatchObject({
+      id: "composer-2",
+      providerID: "cursor",
+      name: "Composer 2",
+      api: {
+        id: "cursor",
+        url: "",
+        npm: "",
+      },
+      limit: {
+        context: 200_000,
+        output: 16_384,
+      },
+      status: "active",
+      capabilities: {
+        temperature: true,
+        reasoning: true,
+        attachment: false,
+        toolcall: false,
+        input: {
+          text: true,
+          audio: false,
+          image: false,
+          video: false,
+          pdf: false,
+        },
+        output: {
+          text: true,
+          audio: false,
+          image: false,
+          video: false,
+          pdf: false,
+        },
+        interleaved: false,
+      },
+    });
+  });
+
   it("list 失敗時に静的フォールバック", async () => {
     const sdk = await import("@cursor/sdk");
     vi.mocked(sdk.Cursor.models.list).mockRejectedValue(new Error("network"));

@@ -3,7 +3,7 @@
 Welcome to the `opencode-cursor-plugin` project. This guide provides the essential context you need to assist effectively.
 
 <project_overview>
-This is an OpenCode Provider plugin that exposes Cursor Headless SDK (`@cursor/sdk`) models as the primary LLM provider. It replaces the legacy `cursor_prompt` custom tool with a standard ProviderHook implementation.
+This is an OpenCode Provider plugin that exposes Cursor Headless SDK (`@cursor/sdk`) models as the primary LLM provider. It replaces the legacy `cursor_prompt` custom tool with a standard ProviderHook implementation and injects `provider.cursor` through the plugin config hook so OpenCode registers the provider correctly.
 </project_overview>
 
 <tech_stack>
@@ -31,6 +31,7 @@ To keep this file lightweight (Progressive Disclosure), detailed context is exte
 <guidelines>
 - **Safety First:** **Never** stage or commit sensitive files like `.env`, `.git`, or private keys.
 - **Verification:** **Always** ensure `pnpm typecheck` and `pnpm test` pass before considering a task complete. **Do not** bypass security checks.
+- **Provider verification:** After config changes, confirm `opencode models cursor` lists `cursor/composer-2` (or the whitelisted model set).
 - **Scope:** Focus on the requested task. **Do not** perform unrelated "cleanups" or modify core infrastructure (like GitHub Workflows or Devcontainer configs) unless explicitly asked.
 - **Logging:** Use the custom `Logger` wrapper. **Never** log sensitive values (e.g., `CURSOR_API_KEY`, full prompts/responses). Use lengths, hashes, or fingerprints for telemetry.
 </guidelines>

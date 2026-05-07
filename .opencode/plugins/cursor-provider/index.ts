@@ -1,9 +1,10 @@
 import type { Plugin } from "@opencode-ai/plugin";
 import { config as loadDotenv } from "dotenv";
-import { resolveApiKey, cursorAuthHook } from "./auth";
+import { resolveApiKey, createAuthHook } from "./auth";
 import { createAgentPool } from "./agent-pool";
 import { createLogger } from "./logger";
 import { createProviderHook } from "./provider";
+import { STATIC_FALLBACK_MODELS } from "./models";
 
 const POOL_CAPACITY = 8;
 const CLOSEALL_TIMEOUT_MS = 5_000;
@@ -13,7 +14,7 @@ const CursorProviderPlugin: Plugin = async ({ client }) => {
     loadDotenv();
   }
 
-  const log = createLogger((client.app as any).log);
+  const log = createLogger(((client.app as any).log).bind(client.app));
   const pool = createAgentPool({ log, capacity: POOL_CAPACITY });
 
   const cleanup = async () => {
@@ -47,8 +48,20 @@ const CursorProviderPlugin: Plugin = async ({ client }) => {
   }
 
   return {
-    auth: cursorAuthHook,
+    auth: createAuthHook({ log, pool }),
     provider: createProviderHook({ resolveApiKey, log, pool }),
+    async config(input: any) {
+      if (!input.provider) input.provider = {};
+      if (!input.provider.openai) input.provider.openai = {};
+      if (!input.provider.openai.models) input.provider.openai.models = {};
+      
+      for (const model of STATIC_FALLBACK_MODELS) {
+        input.provider.openai.models[`cursor-${model.id}`] = {
+          name: `Cursor ${model.name}`,
+          limit: { context: model.contextWindow, output: 4096 },
+        };
+      }
+    }
   };
 };
 

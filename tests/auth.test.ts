@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { cursorAuthHook, resolveApiKey } from "../.opencode/plugins/cursor-provider/auth";
+import { createAuthHook, resolveApiKey } from "../.opencode/plugins/cursor-provider/auth";
+import { createLogger } from "../.opencode/plugins/cursor-provider/logger";
+import { createAgentPool } from "../.opencode/plugins/cursor-provider/agent-pool";
 
 describe("resolveApiKey", () => {
   const original = process.env.CURSOR_API_KEY;
@@ -38,11 +40,15 @@ describe("resolveApiKey", () => {
   });
 });
 
-describe("cursorAuthHook", () => {
-  it("methods に api タイプを含み、prompts は key 1 件", () => {
-    expect(cursorAuthHook.methods.some((method) => method.type === "api")).toBe(true);
+describe("auth hook", () => {
+  const log = createLogger(console as any);
+  const pool = createAgentPool({ log, capacity: 1 });
+  const authHook = createAuthHook({ log, pool });
 
-    const apiMethod = cursorAuthHook.methods.find((method) => method.type === "api");
+  it("methods に api タイプを含み、prompts は key 1 件", () => {
+    expect(authHook.methods?.some((method: any) => method.type === "api")).toBe(true);
+
+    const apiMethod = authHook.methods?.find((method: any) => method.type === "api");
     expect(apiMethod?.prompts).toHaveLength(1);
     expect(apiMethod?.prompts?.[0]).toMatchObject({ key: "key", type: "text" });
   });

@@ -11,7 +11,7 @@ import { translate } from "./translator";
 
 const MODELS_LIST_TIMEOUT_MS = 5_000;
 
-async function listModelsWithTimeout(apiKey: string, log: Logger) {
+export async function listModelsWithTimeout(apiKey: string, log: Logger) {
   let timeoutId: NodeJS.Timeout | undefined;
   try {
     return await Promise.race([
@@ -41,6 +41,7 @@ export function createProviderHook(deps: {
   return {
     id: "cursor",
     async models(_provider: any, ctx: ProviderHookContext) {
+      console.error(">>> createProviderHook.models CALLED!");
       const apiKey = await resolveApiKey(ctx);
       const dynamicModels = apiKey ? await listModelsWithTimeout(apiKey, log) : null;
       const sourceModels = dynamicModels ?? STATIC_FALLBACK_MODELS;
@@ -79,7 +80,7 @@ export function createProviderHook(deps: {
   };
 }
 
-async function runDoStream(opts: {
+export async function runDoStream(opts: {
   args: { prompt: any; abortSignal?: AbortSignal; chatParams?: any };
   modelId: string;
   apiKey: string | undefined;
@@ -166,6 +167,7 @@ async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log
   try {
     return await Agent.create({ apiKey, model: { id: modelId }, local: { cwd: process.cwd() } });
   } catch (err) {
+    console.error(">>> createAgentWithRetry ERROR:", err);
     const decision = classifyError(err, { phase: "create" });
     logError(log, err, { phase: "create", retry: decision.retry });
     if (!decision.retry) throw err;

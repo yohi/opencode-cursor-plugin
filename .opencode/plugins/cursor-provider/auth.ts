@@ -5,6 +5,9 @@ const CURSOR_LOGIN_URL = "https://cursor.com/loginDeepControl";
 const CURSOR_POLL_URL = "https://api2.cursor.sh/auth/poll";
 const CURSOR_REFRESH_URL = "https://api2.cursor.sh/auth/exchange_user_api_key";
 
+const CURSOR_REQUEST_TIMEOUT = 30000;
+const CURSOR_POLL_REQUEST_TIMEOUT = 5000;
+
 export async function resolveApiKey(ctx: ProviderHookContext): Promise<string | undefined> {
   try {
     const auth = await (ctx.auth as any)?.get?.("cursor");
@@ -109,21 +112,50 @@ async function pollCursorAuth(uuid: string, verifier: string) {
   // 最大 5分間ポーリング
   for (let i = 0; i < 60; i++) {
     await new Promise((resolve) => setTimeout(resolve, 5000));
-    const res = await fetch(url.toString());
-    if (res.ok) {
-      return (await res.json()) as { accessToken: string; refreshToken: string };
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), CURSOR_POLL_REQUEST_TIMEOUT);
+
+    try {
+      const res = await fetch(url.toString(), { signal: controller.signal });
+      if (res.ok) {
+        const tokens = (await res.json()) as { accessToken: string; refreshToken: string };
+        return tokens;
+      }
+    } catch (err) {
+      // タイムアウトやネットワークエラーは試行の1つとして扱い、ポーリングを継続する
+      if (err instanceof Error && err.name === "AbortError") {
+        // continue to next iteration
+      } else {
+        // 他のネットワークエラーも同様に継続
+      }
+    } finally {
+      clearTimeout(timeout);
     }
   }
   throw new Error("Authentication timed out.");
 }
 
 async function refreshCursorToken(refreshToken: string) {
-  const res = await fetch(CURSOR_REFRESH_URL, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${refreshToken}` },
-  });
-  if (!res.ok) throw new Error("Token refresh failed.");
-  return (await res.json()) as { accessToken: string; refreshToken: string };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), CURSOR_REQUEST_TIMEOUT);
+
+  try {
+    const res = await fetch(CURSOR_REFRESH_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${refreshToken}` },
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error("Token refresh failed.");
+    return (await res.json()) as { accessToken: string; refreshToken: string };
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(`Token refresh timed out after ${CURSOR_REQUEST_TIMEOUT}ms`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function getTokenExpiry(token: string): number {

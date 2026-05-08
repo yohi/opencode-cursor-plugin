@@ -14,7 +14,7 @@ describe("ensureCursorProviderConfig", () => {
       npm: "@ai-sdk/openai-compatible",
       options: { baseURL: "http://127.0.0.1:32125/v1" },
     });
-    expect(config.provider.cursor.models["composer-2"].name).toBe("Composer 2");
+    expect(config.provider.cursor.models["composer-2"].name).toBe("Composer 2 (initializing...)");
   });
 
   it("既存の cursor provider 設定を上書きしない", () => {
@@ -37,17 +37,25 @@ describe("ensureCursorProviderConfig", () => {
       options: { timeout: 1000 },
       models: { custom: { name: "Custom" } },
     });
-    expect(config.provider.cursor.models["composer-2"].name).toBe("Composer 2");
+    expect(config.provider.cursor.models["composer-2"].name).toBe("Composer 2 (initializing...)");
   });
 
   it("プラグインの config hook から cursor provider 定義を追加する", async () => {
-    const hooks = await CursorProviderPlugin({
+    const plugin = await CursorProviderPlugin({
       client: { app: { log: { info() {}, warn() {}, error() {}, debug() {} } } },
     } as any);
     const config: any = {};
 
-    await hooks.config?.(config);
+    await plugin.config?.(config);
 
     expect(config.provider.cursor.id).toBe("cursor");
+
+    // クリーンアップ
+    const beforeExitHandlers = process.listeners("beforeExit");
+    for (const handler of beforeExitHandlers) {
+      if (typeof handler === "function") {
+        await (handler as any)();
+      }
+    }
   });
 });

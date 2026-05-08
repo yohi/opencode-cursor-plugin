@@ -1,4 +1,4 @@
-import type { AuthHook, ProviderHookContext, Auth } from "@opencode-ai/plugin";
+import type { AuthHook, ProviderHookContext } from "@opencode-ai/plugin";
 import { generatePKCE } from "./pkce";
 
 const CURSOR_LOGIN_URL = "https://cursor.com/loginDeepControl";
@@ -11,7 +11,8 @@ export async function resolveApiKey(ctx: ProviderHookContext): Promise<string | 
     if (!auth) return process.env.CURSOR_API_KEY;
 
     if (auth.type === "api") {
-      return auth.key;
+      const key = typeof auth.key === "string" ? auth.key.trim() : "";
+      return key || process.env.CURSOR_API_KEY;
     }
 
     if (auth.type === "oauth") {
@@ -30,7 +31,10 @@ export const cursorAuthHook: AuthHook = {
   provider: "cursor",
   async loader(getAuth, _provider) {
     const auth = await getAuth();
-    if (!auth) return { apiKey: process.env.CURSOR_API_KEY || "cursor" };
+    if (!auth) {
+      const envKey = process.env.CURSOR_API_KEY;
+      return envKey ? { apiKey: envKey } : undefined;
+    }
 
     if (auth.type === "api") {
       return { apiKey: auth.key };
@@ -44,7 +48,7 @@ export const cursorAuthHook: AuthHook = {
           // 新しいトークンを保存（SDK経由で永続化）
           // 注: loader内でのsetはOpenCode本体の挙動に依存するが、
           // ここではアクセストークンを最新にして返却する
-          return { apiKey: refreshed.access };
+          return { apiKey: refreshed.accessToken };
         } catch {
           // リフレッシュ失敗時はそのまま返す（後続の通信でエラーになる）
         }
@@ -52,7 +56,8 @@ export const cursorAuthHook: AuthHook = {
       return { apiKey: auth.access };
     }
 
-    return { apiKey: process.env.CURSOR_API_KEY || "cursor" };
+    const envKey = process.env.CURSOR_API_KEY;
+    return envKey ? { apiKey: envKey } : undefined;
   },
   methods: [
     {
@@ -99,10 +104,20 @@ export const cursorAuthHook: AuthHook = {
 };
 
 async function pollCursorAuth(uuid: string, verifier: string) {
+  // Validate inputs
+  if (!/^[0-9a-f-]{36}$/i.test(uuid)) {
+    throw new Error("Invalid UUID format");
+  }
+  if (!/^[a-z0-9._~-]{43,128}$/i.test(verifier)) {
+    throw new Error("Invalid verifier format");
+  }
+
+  const url = `${CURSOR_POLL_URL}?uuid=${encodeURIComponent(uuid)}&verifier=${encodeURIComponent(verifier)}`;
+
   // 最大 5分間ポーリング
   for (let i = 0; i < 60; i++) {
     await new Promise((resolve) => setTimeout(resolve, 5000));
-    const res = await fetch(`${CURSOR_POLL_URL}?uuid=${uuid}&verifier=${verifier}`);
+    const res = await fetch(url);
     if (res.ok) {
       return (await res.json()) as { accessToken: string; refreshToken: string };
     }

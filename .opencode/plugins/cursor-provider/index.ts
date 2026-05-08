@@ -7,7 +7,7 @@ import { createLogger } from "./logger";
 import { startOpenAiProxy } from "./openai-proxy";
 import { createProviderHook } from "./provider";
 import { Cursor } from "@cursor/sdk";
-import { STATIC_FALLBACK_MODELS } from "./models";
+import { STATIC_FALLBACK_MODELS, makeModelMeta } from "./models";
 
 const POOL_CAPACITY = 8;
 const CLOSEALL_TIMEOUT_MS = 5_000;
@@ -58,7 +58,7 @@ const CursorProviderPlugin: Plugin = async ({ client }) => {
       
       if (!apiKey) {
         try {
-          const auth = await (client.auth as any).get({ id: "cursor" });
+          const auth = await (client.auth as any).get("cursor");
           if (auth?.type === "api") {
             apiKey = auth.key;
           } else if (auth?.type === "oauth") {
@@ -87,13 +87,7 @@ const CursorProviderPlugin: Plugin = async ({ client }) => {
         const modelsObj: Record<string, any> = {};
         
         for (const m of sourceModels) {
-          modelsObj[m.id] = {
-            name: m.displayName || m.name || m.id,
-            limit: {
-              context: m.contextWindow || 200_000,
-              output: 16_384,
-            },
-          };
+          modelsObj[m.id] = makeModelMeta(m);
         }
         config.provider.cursor.models = modelsObj;
       }

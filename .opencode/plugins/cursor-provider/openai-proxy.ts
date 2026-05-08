@@ -13,6 +13,8 @@ type ChatMessage = {
   content?: unknown;
 };
 
+const MAX_BODY_BYTES = 1 * 1024 * 1024; // 1MB
+
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { "content-type": "application/json" });
   res.end(JSON.stringify(body));
@@ -28,8 +30,15 @@ function getBearerToken(req: IncomingMessage): string | undefined {
 function readBody(req: IncomingMessage): Promise<any> {
   return new Promise((resolve, reject) => {
     let raw = "";
+    let length = 0;
     req.setEncoding("utf8");
     req.on("data", (chunk) => {
+      length += Buffer.byteLength(chunk);
+      if (length > MAX_BODY_BYTES) {
+        req.removeAllListeners();
+        reject(new Error(`Request body exceeds limit of ${MAX_BODY_BYTES} bytes`));
+        return;
+      }
       raw += chunk;
     });
     req.on("end", () => {
@@ -89,7 +98,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
   const messages = Array.isArray(body.messages) ? body.messages : [];
   const prompt = messagesToPrompt(messages);
 
-  if (body.stream === false) {
+  if (!body.stream) {
     let text = "";
     const agent = await Agent.create({ apiKey, model: { id: model }, local: { cwd: process.cwd() } });
     try {
@@ -114,13 +123,14 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
     return;
   }
 
+  const agent = await Agent.create({ apiKey, model: { id: model }, local: { cwd: process.cwd() } });
+  
   res.writeHead(200, {
     "content-type": "text/event-stream",
     "cache-control": "no-cache",
     connection: "keep-alive",
   });
 
-  const agent = await Agent.create({ apiKey, model: { id: model }, local: { cwd: process.cwd() } });
   try {
     const id = `cursor-${Date.now()}`;
     const run = await agent.send(prompt, {
@@ -172,8 +182,13 @@ export async function startOpenAiProxy(log: Logger): Promise<ProxyServer> {
       sendJson(res, 404, { error: { message: "Not found" } });
     })().catch((err) => {
       log.warn("cursor-openai-proxy: request failed", { errorType: err instanceof Error ? err.constructor.name : typeof err });
-      if (!res.headersSent) sendJson(res, 500, { error: { message: err instanceof Error ? err.message : String(err) } });
-      else res.end();
+      if (!res.headersSent) {
+        sendJson(res, err.message?.includes("limit") ? 413 : 500, { 
+          error: { message: err instanceof Error ? err.message : String(err) } 
+        });
+      } else {
+        res.end();
+      }
     });
   });
 
@@ -182,7 +197,9 @@ export async function startOpenAiProxy(log: Logger): Promise<ProxyServer> {
     server.listen(0, "127.0.0.1", () => {
       server.off("error", reject);
       const address = server.address();
-      resolve(typeof address === "object" && address ? address.port : 0);
+      const p = typeof address === "object" && address ? address.port : 0;
+      if (!p) reject(new Error("cursor-openai-proxy: failed to resolve listen port"));
+      else resolve(p);
     });
   });
 
@@ -194,6 +211,9 @@ export async function startOpenAiProxy(log: Logger): Promise<ProxyServer> {
 
 function closeServer(server: Server): Promise<void> {
   return new Promise((resolve, reject) => {
+    if (typeof server.closeAllConnections === "function") {
+      server.closeAllConnections();
+    }
     server.close((err) => (err ? reject(err) : resolve()));
   });
 }

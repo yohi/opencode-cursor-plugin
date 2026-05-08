@@ -92,7 +92,9 @@ OpenCode のメイン LLM プロバイダーとして Cursor Headless SDK (`@cur
 ### 5.5 Provider 登録 (`config.ts`)
 - `config` hook で `provider.cursor` を自動注入します。
 - `provider.cursor` には `@ai-sdk/openai-compatible` と local proxy の `baseURL` を設定します。
-- `provider.cursor.whitelist` が指定されていればそのまま保持し、未指定時はプラグイン既定のモデルを注入します。
+- `provider.cursor.whitelist` が指定されていればそのまま保持し、未指定時はプラグイン既定のモデル（`models.ts` の `STATIC_FALLBACK_MODELS`）を注入します。
+- **whitelist の目的**: ユーザーが特定のモデルのみを許可したい場合に、表示・利用可能なモデルリストをフィルタリングします。
+- **フォーマット**: モデル ID の文字列配列（例: `["composer-2", "gpt-4o"]`）を期待します。
 
 ## 6. Tool-call 関連イベントの扱い
 - **ToolCallStartedUpdate**: Stream に text-delta として警告メッセージを **1 回のみ** 挿入し、ログ出力します。Pure LLM モードであるため、実行は行われません。

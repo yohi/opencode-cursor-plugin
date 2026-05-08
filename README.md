@@ -120,7 +120,7 @@ opencode models cursor
   "provider": {
     "default": "cursor/composer-2"
   },
-  "plugins": [
+  "plugin": [
     ["./.opencode/plugins/cursor-provider/index.ts", {}]
   ]
 }

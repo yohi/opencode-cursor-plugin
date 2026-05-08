@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.1.0](https://github.com/yohi/opencode-cursor-plugin/compare/v1.0.0...v1.1.0) (2026-05-08)
+
+
+### Features
+
+* **cursor-provider:** Cursorプロバイダーの認証処理を改善し、OAuthトークンのリフレッシュに対応 ([b1a061a](https://github.com/yohi/opencode-cursor-plugin/commit/b1a061a879cf29671d0655a7808d40c6a70a8547))
+* **cursor-provider:** 認証フローの刷新と動的モデル取得機能の実装 ([cb5c6b8](https://github.com/yohi/opencode-cursor-plugin/commit/cb5c6b89d437c91887226da3e8c7ef9dae4a552c))
+
+
+### Bug Fixes
+
+* cursor provider のモデル登録と起動経路を修正 ([418a777](https://github.com/yohi/opencode-cursor-plugin/commit/418a777b58e7d7aa631838b62384b36ad431563e))
+* **cursor-provider:** Cursor認証: タイムアウトと中断処理の改善 ([611b412](https://github.com/yohi/opencode-cursor-plugin/commit/611b41219ce4fd8e0009e3d74343f0c4c1081a02))
+* **cursor-provider:** プロキシのストリーミングエラーハンドリングを修正 ([53e97cd](https://github.com/yohi/opencode-cursor-plugin/commit/53e97cd01b1adbf5d1f9dbe982417e944bf3cce9))
+* **cursor-provider:** 認証エラー処理とプロキシ応答を改善 ([f041495](https://github.com/yohi/opencode-cursor-plugin/commit/f041495bfeeaafe199a6e1eb806073fc48114932))
+* **cursor-provider:** 認証処理の堅牢化とモデルメタデータ管理の改善 ([ef63e07](https://github.com/yohi/opencode-cursor-plugin/commit/ef63e0768c59ac3a9f269bf456ba9e5eb81b499e))
+* **cursor-provider:** 認証周りの安全性向上とモデル取得処理の改善 ([b4a7385](https://github.com/yohi/opencode-cursor-plugin/commit/b4a73853bd66f5142a18e94b1153f41575606587))
+
 ## 1.0.0 (2026-05-04)
 
 

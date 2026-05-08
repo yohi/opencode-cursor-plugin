@@ -25,6 +25,7 @@ async function makeHookHelper(resolveKey: any = async () => "key") {
     resolveApiKey: resolveKey,
     log,
     pool: createAgentPool({ log, capacity: 8 }),
+    cwd: "/test/cwd",
   });
   const ctx: any = { auth: { get: async () => undefined } };
   return { sdk, hook, ctx };
@@ -148,7 +149,7 @@ describe("createProviderHook.models()", () => {
     // models1 から生成された doStream なので ctx1 を使うべき
     expect(resolveApiKey).toHaveBeenCalledWith(ctx1);
     expect(sdk.Agent.create).toHaveBeenCalledWith(
-      expect.objectContaining({ apiKey: "key-1" }),
+      expect.objectContaining({ apiKey: "key-1", local: { cwd: "/test/cwd" } }),
     );
   });
 

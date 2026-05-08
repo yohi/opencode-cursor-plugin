@@ -1,6 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ensureCursorProviderConfig } from "../.opencode/plugins/cursor-provider/config";
 import CursorProviderPlugin from "../.opencode/plugins/cursor-provider/index";
+
+vi.mock("../.opencode/plugins/cursor-provider/openai-proxy", () => ({
+  startOpenAiProxy: vi.fn().mockResolvedValue({
+    baseURL: "http://127.0.0.1:32125/v1",
+    close: vi.fn().mockResolvedValue(undefined),
+  }),
+}));
 
 describe("ensureCursorProviderConfig", () => {
   it("provider.cursor が無い設定に cursor provider 定義を追加する", () => {
@@ -49,13 +56,6 @@ describe("ensureCursorProviderConfig", () => {
     await plugin.config?.(config);
 
     expect(config.provider.cursor.id).toBe("cursor");
-
-    // クリーンアップ
-    const beforeExitHandlers = process.listeners("beforeExit");
-    for (const handler of beforeExitHandlers) {
-      if (typeof handler === "function") {
-        await (handler as any)();
-      }
-    }
+    expect(config.provider.cursor.options.baseURL).toBe("http://127.0.0.1:32125/v1");
   });
 });

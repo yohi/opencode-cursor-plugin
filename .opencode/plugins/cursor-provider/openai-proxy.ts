@@ -187,6 +187,9 @@ export async function startOpenAiProxy(log: Logger): Promise<ProxyServer> {
           error: { message: err instanceof Error ? err.message : String(err) } 
         });
       } else {
+        if (res.getHeader("content-type") === "text/event-stream") {
+          res.write(`data: ${JSON.stringify({ error: { message: err instanceof Error ? err.message : String(err) } })}\n\n`);
+        }
         res.end();
       }
     });

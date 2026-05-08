@@ -21,7 +21,7 @@ OpenCode のメイン LLM プロバイダーとして Cursor Headless SDK (`@cur
 | プールライフサイクル | LRU 上限 8、Exclusive Checkout、close 5 秒タイムアウト | 予測可能でリソース漏洩や並列利用時の破損なし |
 | ストリームイベント | text 通常 / thinking → reasoning / tool-call → 警告 | Cursor の表現力を活用しつつ Pure LLM 建前を可視化 |
 | 認証 | env var + `AuthHook`（api タイプ） | UX 改善。OAuth はスコープ外 |
-| プロバイダー登録 | `config` hook で `provider.cursor` を自動注入 | OpenCode 1.14 系で provider 登録を成立させるため |
+| プロバイダー登録 | `config` hook で `provider.cursor` を自動注入 | OpenCode >= 1.14.0 で provider 登録を成立させるため |
 | 命名 | `id="cursor"` / default `composer-2` | Cursor ドキュメントと一致 |
 
 ## 3. アーキテクチャ概要
@@ -34,11 +34,13 @@ OpenCode のメイン LLM プロバイダーとして Cursor Headless SDK (`@cur
   │ ② config hook で provider.cursor を補完
   │ ③ AuthHook / ProviderHook 登録
   ▼
-  ├─ provider.cursor.options.baseURL = local proxy
+  ├─ provider.cursor.options.baseURL = local proxy (http://127.0.0.1:{port}/v1)
+  │    ※ ポートは 0 (OS割当) を優先し、失敗時は 32125 を試行。環境変数 CURSOR_PROXY_PORT で固定可能。
+  │    ※ プロバイダー初期化時に自動開始され、プロセス終了時にクローズされる。
   └─ models() コールバック
        │ ④ Cursor.models.list() → 失敗時は静的フォールバック
        ▼ OpenCode SDK v2 互換 Model を返却
-
+```,old_string:
 [OpenCode 推論時]
   │ ⑤ ユーザーが cursor/composer-2 等を選択して実行
   ▼
@@ -60,7 +62,7 @@ OpenCode のメイン LLM プロバイダーとして Cursor Headless SDK (`@cur
 - `config.ts`: `provider.cursor` の自動注入
 - `provider.ts`: ProviderHook 実装。ストリーム実行ライフサイクル管理
 - `auth.ts`: AuthHook 定義。環境変数または設定からAPIキー解決
-- `models.ts`: 静的フォールバックモデルリスト、ModelV2 ファクトリ
+- `models.ts`: 静的フォールバックモデルリスト (`STATIC_FALLBACK_MODELS`)、ModelV2 ファクトリ
 - `openai-proxy.ts`: OpenAI-compatible API を Cursor SDK へ中継するローカル proxy
 - `translator.ts`: 履歴ハッシュ化 (`role="system"` と `role="user"` のみ対象) + プロンプト変換
 - `agent-pool.ts`: LRU キャッシュ。排他的チェックアウト (`tryGet`), `put`, `closeAll`
@@ -94,7 +96,10 @@ OpenCode のメイン LLM プロバイダーとして Cursor Headless SDK (`@cur
 - `provider.cursor` には `@ai-sdk/openai-compatible` と local proxy の `baseURL` を設定します。
 - `provider.cursor.whitelist` が指定されていればそのまま保持し、未指定時はプラグイン既定のモデル（`models.ts` の `STATIC_FALLBACK_MODELS`）を注入します。
 - **whitelist の目的**: ユーザーが特定のモデルのみを許可したい場合に、表示・利用可能なモデルリストをフィルタリングします。
-- **フォーマット**: モデル ID の文字列配列（例: `["composer-2", "gpt-4o"]`）を期待します。
+- **フォーマット**:
+    - モデル ID の文字列配列: `["composer-2", "gpt-4o"]`
+    - または、表示名を含むオブジェクト配列: `[{ "id": "composer-2", "name": "Cursor Composer" }]`
+- **挙動**: ユーザー指定がある場合はそれを優先し、未指定時は `STATIC_FALLBACK_MODELS` を使用します。システムは `models()` フック内でこのリストを参照し、UI に表示するプロバイダーモデルを構築します。
 
 ## 6. Tool-call 関連イベントの扱い
 - **ToolCallStartedUpdate**: Stream に text-delta として警告メッセージを **1 回のみ** 挿入し、ログ出力します。Pure LLM モードであるため、実行は行われません。

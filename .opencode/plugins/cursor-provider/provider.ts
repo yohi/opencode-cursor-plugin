@@ -9,7 +9,7 @@ import { STATIC_FALLBACK_MODELS, makeModelMeta } from "./models";
 import { createStream } from "./stream-proxy";
 import { translate } from "./translator";
 
-const MODELS_LIST_TIMEOUT_MS = 5_000;
+const MODELS_LIST_TIMEOUT_MS = 10_000;
 
 async function listModelsWithTimeout(apiKey: string, log: Logger) {
   let timeoutId: NodeJS.Timeout | undefined;

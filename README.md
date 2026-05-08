@@ -1,6 +1,6 @@
 # opencode-cursor-plugin
 
-OpenCode 用 Provider プラグイン。Cursor 公式 SDK (`@cursor/sdk`) を OpenCode のメイン LLM プロバイダーとして登録し、`cursor/composer-2` などのモデルを直接利用できるようにします。
+OpenCode 用 Provider プラグイン。Cursor 公式 SDK (`@cursor/sdk`) を OpenCode から使えるようにし、起動時に `provider.cursor` を自動注入して `cursor/composer-2` などのモデルを利用できるようにします。
 
 詳細な設計とアーキテクチャについては [SPEC.md](./SPEC.md) を参照してください。
 
@@ -24,9 +24,9 @@ OpenCode 用 Provider プラグイン。Cursor 公式 SDK (`@cursor/sdk`) を Op
         //npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
         ```
      2. ユーザーに `GITHUB_TOKEN` を設定するよう促すか、既存の環境変数を利用してください。
-     3. プロジェクトの `opencode.json`（または `oh-my-opencode.jsonc`等）を開き、`plugins` オブジェクト内に `"@yohi/opencode-cursor-plugin": {}` を追加してください。
+     3. プロジェクトの `opencode.json`（または `opencode.jsonc`等）を開き、`plugin` 配列内に `"@yohi/opencode-cursor-plugin"` を追加してください。
    * **ソースコードから利用する場合**:
-     1. `opencode.json`（または `oh-my-opencode.jsonc`等）を開き、`plugins` 配列（またはオブジェクト）内に `.opencode/plugins/cursor-provider/index.ts` へのパスを指定する設定を追加してください。
+     1. `opencode.json`（または `opencode.jsonc`等）を開き、`plugin` 配列内に `.opencode/plugins/cursor-provider/index.ts` へのパスを指定する設定を追加してください。
 3. **[ ] 環境変数の設定:**
    * プロジェクトの `.env` ファイルに `CURSOR_API_KEY` を追加するようユーザーに促すか、`opencode auth login cursor` の使用を提案してください。
 </details>
@@ -35,6 +35,7 @@ OpenCode 用 Provider プラグイン。Cursor 公式 SDK (`@cursor/sdk`) を Op
 
 - 旧 `cursor_prompt` カスタムツールは削除されました。
 - Cursor は OpenCode のメイン LLM プロバイダーとして直接利用できます。
+- プラグインが起動時に `provider.cursor` を自動設定します。`opencode.jsonc` に手で provider 定義を書く必要はありません。
 - 認証は `opencode auth login cursor` または `CURSOR_API_KEY` を利用します。
 
 ## 提供プロバイダー
@@ -44,6 +45,8 @@ OpenCode 用 Provider プラグイン。Cursor 公式 SDK (`@cursor/sdk`) を Op
 利用例: `cursor/composer-2`, `cursor/claude-3-7-sonnet`, `cursor/gpt-4o`
 
 OpenCode は Provider 経由で直接ストリーミング応答を受け取ります。
+
+`provider.cursor.whitelist` を設定すると、モデル一覧を特定のモデルに絞れます。未設定の場合はプラグイン側の既定モデルが表示されます。
 
 ## 必須環境変数
 
@@ -67,6 +70,49 @@ pnpm typecheck
 pnpm test
 ```
 
+## 設定方法
+
+1. プラグインを読み込むように `opencode.jsonc` を設定します。
+
+```jsonc
+{
+  "provider": {
+    "default": "cursor/composer-2"
+  },
+  "plugin": [
+    ["./.opencode/plugins/cursor-provider/index.ts", {}]
+  ]
+}
+```
+
+2. 必要に応じて `provider.cursor.whitelist` を指定します。
+
+```jsonc
+{
+  "provider": {
+    "cursor": {
+      "whitelist": ["composer-2"]
+    }
+  }
+}
+```
+
+3. 認証します。
+
+```bash
+opencode auth login cursor
+# または
+export CURSOR_API_KEY="..."
+```
+
+4. 動作確認します。
+
+```bash
+opencode models cursor
+```
+
+`cursor/composer-2` が表示されれば設定完了です。
+
 ## 設定例 (`opencode.jsonc`)
 
 ```jsonc
@@ -74,7 +120,7 @@ pnpm test
   "provider": {
     "default": "cursor/composer-2"
   },
-  "plugins": [
+  "plugin": [
     ["./.opencode/plugins/cursor-provider/index.ts", {}]
   ]
 }
@@ -97,15 +143,15 @@ GitHub Packages 版を利用する場合は `.npmrc` に以下を設定します
 //npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
 ```
 
-`opencode.json` / `opencode.jsonc` の `plugins` には npm パッケージを追加できます。
+`opencode.json` / `opencode.jsonc` の `plugin` には npm パッケージを追加できます。
 
 ```jsonc
 {
   "provider": { "default": "cursor/composer-2" },
-  "plugins": {
-    "@yohi/opencode-cursor-plugin": {}
-  }
+  "plugin": ["@yohi/opencode-cursor-plugin"]
 }
 ```
 
 ローカル開発中のソースを直接ロードさせる場合は `.opencode/plugins/cursor-provider/index.ts` を指定してください。
+
+このプラグインは起動時に `provider.cursor` を補完するため、通常の利用では `provider.cursor` を手で記述する必要はありません。

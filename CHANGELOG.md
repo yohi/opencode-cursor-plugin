@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.2.0](https://github.com/yohi/opencode-cursor-plugin/compare/v1.1.0...v1.2.0) (2026-05-08)
+
+
+### Features
+
+* **cursor-provider:** 認証情報永続化機能を追加 ([a0e5365](https://github.com/yohi/opencode-cursor-plugin/commit/a0e5365db863e31aa84a31de97af5cb4f7482842))
+
+
+### Bug Fixes
+
+* **cursor-provider:** v1.1.0 におけるパス解決の失敗と認証永続化の不備を修正 ([a0d812c](https://github.com/yohi/opencode-cursor-plugin/commit/a0d812cee8d885009fd1cd0e4b3111a1fb427098))
+* **cursor-provider:** 指摘事項の修正（recreateAgent の cwd 欠落と resolveApiKey の永続化漏れ） ([ba934b1](https://github.com/yohi/opencode-cursor-plugin/commit/ba934b1fd09e6b404521ef1fbe085c509582aaab))
+
 ## [1.1.0](https://github.com/yohi/opencode-cursor-plugin/compare/v1.0.0...v1.1.0) (2026-05-08)
 
 

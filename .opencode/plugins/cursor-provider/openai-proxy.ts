@@ -2,6 +2,10 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { Agent } from "@cursor/sdk";
 import type { Logger } from "./logger";
 import { STATIC_FALLBACK_MODELS } from "./models";
+import { translate, type LanguageModelV2Prompt } from "./translator";
+import type { AgentPool } from "./agent-pool";
+import { fingerprintApiKey } from "./agent-pool";
+import { disposeAgentSafely } from "./agent-cleanup";
 
 type ProxyServer = {
   baseURL: string;
@@ -9,8 +13,14 @@ type ProxyServer = {
 };
 
 type ChatMessage = {
-  role?: string;
-  content?: unknown;
+  role: "system" | "user" | "assistant" | "tool";
+  content: string | Array<{ type: string; text?: string; [k: string]: any }>;
+};
+
+type ChatCompletionRequest = {
+  model: string;
+  messages: ChatMessage[];
+  stream?: boolean;
 };
 
 const MAX_BODY_BYTES = 1 * 1024 * 1024; // 1MB
@@ -27,7 +37,7 @@ function getBearerToken(req: IncomingMessage): string | undefined {
   return token && token !== "cursor" ? token : undefined;
 }
 
-function readBody(req: IncomingMessage): Promise<any> {
+function readBody(req: IncomingMessage): Promise<ChatCompletionRequest> {
   return new Promise((resolve, reject) => {
     let raw = "";
     let length = 0;
@@ -43,7 +53,21 @@ function readBody(req: IncomingMessage): Promise<any> {
     });
     req.on("end", () => {
       try {
-        resolve(raw ? JSON.parse(raw) : {});
+        if (!raw) return resolve({ model: "composer-2", messages: [] });
+        const body = JSON.parse(raw);
+        if (!body || typeof body !== "object") throw new Error("Invalid JSON body");
+        if (body.model && typeof body.model !== "string") throw new Error("model must be a string");
+        if (!Array.isArray(body.messages)) throw new Error("messages must be an array");
+        
+        // Runtime validation of messages
+        for (const msg of body.messages) {
+          if (!msg || typeof msg !== "object") throw new Error("Invalid message in messages");
+          if (!["system", "user", "assistant", "tool"].includes(msg.role)) {
+            throw new Error(`Invalid role: ${msg.role}`);
+          }
+        }
+
+        resolve(body as ChatCompletionRequest);
       } catch (err) {
         reject(err);
       }
@@ -52,41 +76,11 @@ function readBody(req: IncomingMessage): Promise<any> {
   });
 }
 
-function contentToText(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-
-  return content
-    .map((part) => {
-      if (!part || typeof part !== "object") return "";
-      const typed = part as { type?: string; text?: string };
-      return typed.type === "text" && typeof typed.text === "string" ? typed.text : "";
-    })
-    .filter(Boolean)
-    .join("\n");
-}
-
-function messagesToPrompt(messages: ChatMessage[]): string {
-  return messages
-    .map((message) => {
-      const role = message.role ?? "user";
-      const text = contentToText(message.content);
-      return text ? `<${role}>\n${text}\n</${role}>` : "";
-    })
-    .filter(Boolean)
-    .join("\n\n");
-}
-
-function normalizeModelId(model: unknown): string {
-  const modelId = typeof model === "string" && model.trim() ? model.trim() : "composer-2";
-  return modelId.startsWith("cursor/") ? modelId.slice("cursor/".length) : modelId;
-}
-
 function writeSse(res: ServerResponse, payload: unknown): void {
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
 }
 
-async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger): Promise<void> {
+async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger, pool: AgentPool): Promise<void> {
   const apiKey = getBearerToken(req) ?? process.env.CURSOR_API_KEY?.trim();
   if (!apiKey) {
     sendJson(res, 401, { error: { message: "Cursor API key is not set" } });
@@ -94,37 +88,90 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
   }
 
   const body = await readBody(req);
-  const model = normalizeModelId(body.model);
-  const messages = Array.isArray(body.messages) ? body.messages : [];
-  const prompt = messagesToPrompt(messages);
+  const modelId = body.model.startsWith("cursor/") ? body.model.slice("cursor/".length) : (body.model || "composer-2");
+  const messages = body.messages as LanguageModelV2Prompt;
+  
+  if (messages.length === 0) {
+    sendJson(res, 400, { error: { message: "messages is empty" } });
+    return;
+  }
+
+  const translated = translate(messages);
+  const fingerprint = fingerprintApiKey(apiKey);
+  const hit = pool.tryGet(translated.prefixHash, modelId, apiKey);
+  const controller = new AbortController();
+  
+  const onDisconnect = () => {
+    log.debug("cursor-openai-proxy: client disconnected");
+    controller.abort();
+  };
+  req.on("aborted", onDisconnect);
+  res.on("close", onDisconnect);
+
+  let agent: any;
+  let messageToSend: string;
+
+  if (hit) {
+    agent = hit.agent;
+    messageToSend = translated.latestUserMessage;
+    log.debug("cursor-openai-proxy: pool hit", { prefixHash: translated.prefixHash.slice(0, 8) });
+  } else {
+    try {
+      agent = await Agent.create({ apiKey, model: { id: modelId }, local: { cwd: process.cwd() } });
+      messageToSend = translated.fullPromptOnMiss;
+      log.debug("cursor-openai-proxy: pool miss", { prefixHash: translated.prefixHash.slice(0, 8) });
+    } catch (err) {
+      if (!res.headersSent) {
+        sendJson(res, 500, { error: { message: `Agent creation failed: ${err instanceof Error ? err.message : String(err)}` } });
+      }
+      return;
+    }
+  }
 
   if (!body.stream) {
     let text = "";
-    const agent = await Agent.create({ apiKey, model: { id: model }, local: { cwd: process.cwd() } });
     try {
-      const run = await agent.send(prompt, {
+      const run = await agent.send(messageToSend, {
         onDelta(update: any) {
           if (update.type === "text-delta" || update.type === "thinking-delta") text += update.text ?? "";
         },
       });
-      await (run as any).wait();
-      sendJson(res, 200, {
-        id: `cursor-${Date.now()}`,
-        object: "chat.completion",
-        created: Math.floor(Date.now() / 1000),
-        model,
-        choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }],
-      });
-    } finally {
-      await (agent as any).close?.().catch?.((err: unknown) => {
-        log.warn("cursor-openai-proxy: agent close failed", { errorType: err instanceof Error ? err.constructor.name : typeof err });
-      });
+
+      const waitPromise = (run as any).wait();
+      const result = await Promise.race([
+        waitPromise,
+        new Promise<never>((_, reject) => {
+          controller.signal.addEventListener("abort", () => reject(new Error("aborted")));
+        }),
+      ]);
+
+      if (result.status === "finished") {
+        await pool.put(translated.nextHash, {
+          agent,
+          lastUsedAt: Date.now(),
+          modelId,
+          apiKeyFingerprint: fingerprint,
+        });
+        sendJson(res, 200, {
+          id: `cursor-${Date.now()}`,
+          object: "chat.completion",
+          created: Math.floor(Date.now() / 1000),
+          model: body.model,
+          choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }],
+        });
+      } else {
+        await disposeAgentSafely(agent, log);
+      }
+    } catch (err) {
+      await disposeAgentSafely(agent, log);
+      if (!res.headersSent) {
+        sendJson(res, 500, { error: { message: err instanceof Error ? err.message : String(err) } });
+      }
     }
     return;
   }
 
-  const agent = await Agent.create({ apiKey, model: { id: model }, local: { cwd: process.cwd() } });
-  
+  // SSE Path
   res.writeHead(200, {
     "content-type": "text/event-stream",
     "cache-control": "no-cache",
@@ -133,36 +180,58 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
 
   try {
     const id = `cursor-${Date.now()}`;
-    const run = await agent.send(prompt, {
+    const run = await agent.send(messageToSend, {
       onDelta(update: any) {
         if (update.type !== "text-delta" && update.type !== "thinking-delta") return;
         writeSse(res, {
           id,
           object: "chat.completion.chunk",
           created: Math.floor(Date.now() / 1000),
-          model,
+          model: body.model,
           choices: [{ index: 0, delta: { content: update.text ?? "" }, finish_reason: null }],
         });
       },
     });
-    await (run as any).wait();
-    writeSse(res, {
-      id,
-      object: "chat.completion.chunk",
-      created: Math.floor(Date.now() / 1000),
-      model,
-      choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
-    });
-    res.write("data: [DONE]\n\n");
+
+    const waitPromise = (run as any).wait();
+    const result = await Promise.race([
+      waitPromise,
+      new Promise<never>((_, reject) => {
+        controller.signal.addEventListener("abort", () => reject(new Error("aborted")));
+      }),
+    ]);
+
+    if (result.status === "finished") {
+      await pool.put(translated.nextHash, {
+        agent,
+        lastUsedAt: Date.now(),
+        modelId,
+        apiKeyFingerprint: fingerprint,
+      });
+      writeSse(res, {
+        id,
+        object: "chat.completion.chunk",
+        created: Math.floor(Date.now() / 1000),
+        model: body.model,
+        choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+      });
+      res.write("data: [DONE]\n\n");
+    } else {
+      await disposeAgentSafely(agent, log);
+    }
     res.end();
-  } finally {
-    await (agent as any).close?.().catch?.((err: unknown) => {
-      log.warn("cursor-openai-proxy: agent close failed", { errorType: err instanceof Error ? err.constructor.name : typeof err });
-    });
+  } catch (err) {
+    await disposeAgentSafely(agent, log);
+    if (res.headersSent) {
+      res.write(`data: ${JSON.stringify({ error: { message: err instanceof Error ? err.message : String(err) } })}\n\n`);
+    } else {
+      sendJson(res, 500, { error: { message: err instanceof Error ? err.message : String(err) } });
+    }
+    res.end();
   }
 }
 
-export async function startOpenAiProxy(log: Logger): Promise<ProxyServer> {
+export async function startOpenAiProxy(log: Logger, pool: AgentPool): Promise<ProxyServer> {
   const server = createServer((req, res) => {
     void (async () => {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
@@ -175,7 +244,7 @@ export async function startOpenAiProxy(log: Logger): Promise<ProxyServer> {
       }
 
       if (req.method === "POST" && (url.pathname === "/v1/chat/completions" || url.pathname === "/chat/completions")) {
-        await handleChat(req, res, log);
+        await handleChat(req, res, log, pool);
         return;
       }
 

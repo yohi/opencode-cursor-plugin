@@ -1,6 +1,6 @@
 import type { Plugin } from "@opencode-ai/plugin";
 import { config as loadDotenv } from "dotenv";
-import { resolveApiKey, cursorAuthHook } from "./auth";
+import { resolveApiKey, cursorAuthHook, getOrRefreshToken } from "./auth";
 import { createAgentPool } from "./agent-pool";
 import { ensureCursorProviderConfig } from "./config";
 import { createLogger } from "./logger";
@@ -19,7 +19,7 @@ const CursorProviderPlugin: Plugin = async ({ client }) => {
 
   const log = createLogger((client.app as any).log);
   const pool = createAgentPool({ log, capacity: POOL_CAPACITY });
-  const proxy = await startOpenAiProxy(log);
+  const proxy = await startOpenAiProxy(log, pool);
 
   const cleanup = async () => {
     let timeoutId: NodeJS.Timeout | undefined;
@@ -54,29 +54,27 @@ const CursorProviderPlugin: Plugin = async ({ client }) => {
   return {
     config: async (config) => {
       // 1. 認証情報を解決（環境変数または保存された情報）
-      let apiKey = process.env.CURSOR_API_KEY;
-      
-      if (!apiKey) {
-        try {
-          const auth = await (client.auth as any).get("cursor");
-          if (auth?.type === "api") {
-            apiKey = auth.key;
-          } else if (auth?.type === "oauth") {
-            apiKey = auth.access;
-          }
-        } catch {
-          // No saved auth yet
-        }
-      }
+      const savedAuth = await (client.auth as any).get("cursor").catch(() => undefined);
+      const resolved = await getOrRefreshToken(savedAuth);
+      const apiKey = resolved?.apiKey || process.env.CURSOR_API_KEY;
 
       let dynamicModels: any[] | null = null;
 
       // 2. 有効なキー/トークンがあればモデルを取得
       if (apiKey) {
+        let timeoutId: NodeJS.Timeout | undefined;
         try {
-          dynamicModels = await Cursor.models.list({ apiKey });
+          dynamicModels = await Promise.race([
+            Cursor.models.list({ apiKey }),
+            new Promise<never>((_, reject) => {
+              timeoutId = setTimeout(() => reject(new Error("models.list timeout")), 10_000);
+            }),
+          ]);
         } catch {
-          // Discovery failed (e.g. network error or expired token)
+          // Discovery failed or timed out
+          dynamicModels = STATIC_FALLBACK_MODELS;
+        } finally {
+          if (timeoutId) clearTimeout(timeoutId);
         }
       }
 

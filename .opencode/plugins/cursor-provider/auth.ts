@@ -8,56 +8,45 @@ const CURSOR_REFRESH_URL = "https://api2.cursor.sh/auth/exchange_user_api_key";
 export async function resolveApiKey(ctx: ProviderHookContext): Promise<string | undefined> {
   try {
     const auth = await (ctx.auth as any)?.get?.("cursor");
-    if (!auth) return process.env.CURSOR_API_KEY;
-
-    if (auth.type === "api") {
-      const key = typeof auth.key === "string" ? auth.key.trim() : "";
-      return key || process.env.CURSOR_API_KEY;
-    }
-
-    if (auth.type === "oauth") {
-      // OAuthの場合はアクセストークンを返す
-      // 本来は期限切れチェックとリフレッシュが必要だが、
-      // ここでは簡易化のためアクセストークンを直接返す
-      return auth.access;
-    }
-  } catch (err) {
-    // Fallback to env
+    const result = await getOrRefreshToken(auth);
+    return result?.apiKey || process.env.CURSOR_API_KEY;
+  } catch {
+    return process.env.CURSOR_API_KEY;
   }
-  return process.env.CURSOR_API_KEY;
+}
+
+export async function getOrRefreshToken(auth: any): Promise<{ apiKey: string } | undefined> {
+  if (!auth) return undefined;
+
+  if (auth.type === "api") {
+    const key = typeof auth.key === "string" ? auth.key.trim() : "";
+    return key ? { apiKey: key } : undefined;
+  }
+
+  if (auth.type === "oauth") {
+    // 期限切れチェック
+    if (auth.expires && auth.expires < Date.now()) {
+      try {
+        const refreshed = await refreshCursorToken(auth.refresh);
+        return { apiKey: refreshed.accessToken };
+      } catch {
+        // リフレッシュ失敗時は現在のトークンで強行（後続でエラー）
+      }
+    }
+    return auth.access ? { apiKey: auth.access } : undefined;
+  }
+  return undefined;
 }
 
 export const cursorAuthHook: AuthHook = {
   provider: "cursor",
   async loader(getAuth, _provider) {
     const auth = await getAuth();
-    if (!auth) {
-      const envKey = process.env.CURSOR_API_KEY;
-      return envKey ? { apiKey: envKey } : undefined;
-    }
-
-    if (auth.type === "api") {
-      return { apiKey: auth.key };
-    }
-
-    if (auth.type === "oauth") {
-      // 期限切れチェック
-      if (auth.expires && auth.expires < Date.now()) {
-        try {
-          const refreshed = await refreshCursorToken(auth.refresh);
-          // 新しいトークンを保存（SDK経由で永続化）
-          // 注: loader内でのsetはOpenCode本体の挙動に依存するが、
-          // ここではアクセストークンを最新にして返却する
-          return { apiKey: refreshed.accessToken };
-        } catch {
-          // リフレッシュ失敗時はそのまま返す（後続の通信でエラーになる）
-        }
-      }
-      return { apiKey: auth.access };
-    }
+    const result = await getOrRefreshToken(auth);
+    if (result) return result;
 
     const envKey = process.env.CURSOR_API_KEY;
-    return envKey ? { apiKey: envKey } : undefined;
+    return envKey ? { apiKey: envKey } : {};
   },
   methods: [
     {
@@ -136,7 +125,12 @@ async function refreshCursorToken(refreshToken: string) {
 
 function getTokenExpiry(token: string): number {
   try {
-    const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64").toString());
+    const parts = token.split(".");
+    if (parts.length < 2) return Date.now() + 3600 * 1000;
+    const payload = JSON.parse(Buffer.from(parts[1], "base64").toString());
+    if (typeof payload !== "object" || payload === null || typeof payload.exp !== "number") {
+      return Date.now() + 3600 * 1000;
+    }
     return payload.exp * 1000 - 60000; // 1分前に期限切れとみなす
   } catch {
     return Date.now() + 3600 * 1000;

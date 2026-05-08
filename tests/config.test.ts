@@ -49,7 +49,10 @@ describe("ensureCursorProviderConfig", () => {
 
   it("プラグインの config hook から cursor provider 定義を追加する", async () => {
     const plugin = await CursorProviderPlugin({
-      client: { app: { log: { info() {}, warn() {}, error() {}, debug() {} } } },
+      client: { 
+        app: { log: { info() {}, warn() {}, error() {}, debug() {} } },
+        auth: { get: vi.fn().mockResolvedValue(undefined) }
+      },
     } as any);
     const config: any = {};
 

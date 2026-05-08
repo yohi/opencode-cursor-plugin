@@ -20,7 +20,7 @@ OpenCode のメイン LLM プロバイダーとして Cursor Headless SDK (`@cur
 | 履歴の橋渡し | ハッシュ＋プール最適化 / フルプロンプト fallback | レイテンシ最小化と新規／分岐会話への耐性両立 |
 | プールライフサイクル | LRU 上限 8、Exclusive Checkout、close 5 秒タイムアウト | 予測可能でリソース漏洩や並列利用時の破損なし |
 | ストリームイベント | text 通常 / thinking → reasoning / tool-call → 警告 | Cursor の表現力を活用しつつ Pure LLM 建前を可視化 |
-| 認証 | env var + `AuthHook`（api タイプ） | UX 改善。OAuth はスコープ外 |
+| 認証 | env var + `AuthHook` (browser OAuth / api) | UX 改善。ブラウザ OAuth とリフレッシュトークンに対応 |
 | プロバイダー登録 | `config` hook で `provider.cursor` を自動注入 | OpenCode >= 1.14.0 で provider 登録を成立させるため |
 | 命名 | `id="cursor"` / default `composer-2` | Cursor ドキュメントと一致 |
 

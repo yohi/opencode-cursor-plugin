@@ -24,9 +24,9 @@ OpenCode 用 Provider プラグイン。Cursor 公式 SDK (`@cursor/sdk`) を Op
         //npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
         ```
      2. ユーザーに `GITHUB_TOKEN` を設定するよう促すか、既存の環境変数を利用してください。
-      3. プロジェクトの `opencode.json`（または `oh-my-opencode.jsonc`等）を開き、`plugin` 配列内に `"@yohi/opencode-cursor-plugin"` を追加してください。
+     3. プロジェクトの `opencode.json`（または `opencode.jsonc`等）を開き、`plugin` 配列内に `"@yohi/opencode-cursor-plugin"` を追加してください。
    * **ソースコードから利用する場合**:
-     1. `opencode.json`（または `oh-my-opencode.jsonc`等）を開き、`plugin` 配列内に `.opencode/plugins/cursor-provider/index.ts` へのパスを指定する設定を追加してください。
+     1. `opencode.json`（または `opencode.jsonc`等）を開き、`plugin` 配列内に `.opencode/plugins/cursor-provider/index.ts` へのパスを指定する設定を追加してください。
 3. **[ ] 環境変数の設定:**
    * プロジェクトの `.env` ファイルに `CURSOR_API_KEY` を追加するようユーザーに促すか、`opencode auth login cursor` の使用を提案してください。
 </details>

@@ -5,6 +5,14 @@ const CURSOR_PROVIDER_ID = "cursor";
 
 export function ensureCursorProviderConfig(config: Config, options: { baseURL?: string } = {}): void {
   config.provider ??= {};
+  
+  // enabled_providers が定義されている場合は、自分自身を追加して有効化されるようにする
+  if (config.enabled_providers && Array.isArray(config.enabled_providers)) {
+    if (!config.enabled_providers.includes(CURSOR_PROVIDER_ID)) {
+      config.enabled_providers.push(CURSOR_PROVIDER_ID);
+    }
+  }
+
   const current = config.provider[CURSOR_PROVIDER_ID] ?? {};
   const currentOptions = current.options ?? {};
   const currentModels = current.models ?? {};

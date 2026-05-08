@@ -47,6 +47,17 @@ describe("ensureCursorProviderConfig", () => {
     expect(config.provider.cursor.models["composer-2"].name).toBe("Composer 2 (initializing...)");
   });
 
+  it("enabled_providers がある場合に cursor を自動追加する", () => {
+    const config: any = {
+      enabled_providers: ["openai", "google"],
+    };
+
+    ensureCursorProviderConfig(config);
+
+    expect(config.enabled_providers).toContain("cursor");
+    expect(config.enabled_providers).toHaveLength(3);
+  });
+
   it("プラグインの config hook から cursor provider 定義を追加する", async () => {
     const plugin = await CursorProviderPlugin({
       client: { 

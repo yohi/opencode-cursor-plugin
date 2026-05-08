@@ -12,7 +12,21 @@ export async function resolveApiKey(ctx: ProviderHookContext): Promise<string | 
   try {
     const auth = (ctx as any).auth;
     const savedAuth = (auth && typeof auth.get === "function") ? await auth.get("cursor").catch(() => undefined) : undefined;
-    const result = await getOrRefreshToken(savedAuth);
+    const result = await getOrRefreshToken(savedAuth, async (tokens) => {
+      if (auth && typeof auth.set === "function") {
+        await auth.set({
+          path: { id: "cursor" },
+          body: {
+            type: "oauth",
+            access: tokens.accessToken,
+            refresh: tokens.refreshToken,
+            expires: getTokenExpiry(tokens.accessToken),
+          },
+        }).catch(() => {
+          // ignore persistence errors during resolve
+        });
+      }
+    });
     return result?.apiKey || process.env.CURSOR_API_KEY;
   } catch {
     return process.env.CURSOR_API_KEY;

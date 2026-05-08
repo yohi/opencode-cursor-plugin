@@ -124,7 +124,7 @@ async function runDoStream(opts: {
   const recreateAgent = hit
     ? async () => {
         await disposeAgentSafely(agent, log);
-        const fresh = await createAgentWithRetry({ apiKey, modelId, log });
+        const fresh = await createAgentWithRetry({ apiKey, modelId, log, cwd });
         replacedAgent = fresh;
         return { agent: fresh, message: translated.fullPromptOnMiss };
       }

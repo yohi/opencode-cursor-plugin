@@ -58,6 +58,17 @@ describe("ensureCursorProviderConfig", () => {
     expect(config.enabled_providers).toHaveLength(3);
   });
 
+  it("enabled_providers にすでに cursor がある場合は重複追加しない", () => {
+    const config: any = {
+      enabled_providers: ["cursor", "openai"],
+    };
+
+    ensureCursorProviderConfig(config);
+
+    expect(config.enabled_providers).toEqual(["cursor", "openai"]);
+    expect(config.enabled_providers).toHaveLength(2);
+  });
+
   it("プラグインの config hook から cursor provider 定義を追加する", async () => {
     const plugin = await CursorProviderPlugin({
       client: { 

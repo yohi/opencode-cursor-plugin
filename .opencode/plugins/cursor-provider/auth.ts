@@ -30,7 +30,8 @@ export async function getOrRefreshToken(auth: any): Promise<{ apiKey: string } |
         const refreshed = await refreshCursorToken(auth.refresh);
         return { apiKey: refreshed.accessToken };
       } catch {
-        // リフレッシュ失敗時は現在のトークンで強行（後続でエラー）
+        // リフレッシュ失敗時はundefinedを返してフォールバックを促す
+        return undefined;
       }
     }
     return auth.access ? { apiKey: auth.access } : undefined;

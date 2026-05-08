@@ -55,15 +55,21 @@ function readBody(req: IncomingMessage): Promise<ChatCompletionRequest> {
       try {
         if (!raw) return resolve({ model: "composer-2", messages: [] });
         const body = JSON.parse(raw);
-        if (!body || typeof body !== "object") throw new Error("Invalid JSON body");
-        if (body.model && typeof body.model !== "string") throw new Error("model must be a string");
-        if (!Array.isArray(body.messages)) throw new Error("messages must be an array");
+        if (!body || typeof body !== "object") throw new Error("BAD_REQUEST: Invalid JSON body");
+        
+        // Ensure model is a string and has a default
+        if (body.model === undefined || body.model === null) {
+          body.model = "composer-2";
+        }
+        if (typeof body.model !== "string") throw new Error("BAD_REQUEST: model must be a string");
+        
+        if (!Array.isArray(body.messages)) throw new Error("BAD_REQUEST: messages must be an array");
         
         // Runtime validation of messages
         for (const msg of body.messages) {
-          if (!msg || typeof msg !== "object") throw new Error("Invalid message in messages");
+          if (!msg || typeof msg !== "object") throw new Error("BAD_REQUEST: Invalid message in messages");
           if (!["system", "user", "assistant", "tool"].includes(msg.role)) {
-            throw new Error(`Invalid role: ${msg.role}`);
+            throw new Error(`BAD_REQUEST: Invalid role: ${msg.role}`);
           }
         }
 
@@ -88,7 +94,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
   }
 
   const body = await readBody(req);
-  const modelId = body.model.startsWith("cursor/") ? body.model.slice("cursor/".length) : (body.model || "composer-2");
+  const modelId = body.model.startsWith("cursor/") ? body.model.slice("cursor/".length) : body.model;
   const messages = body.messages as LanguageModelV2Prompt;
   
   if (messages.length === 0) {
@@ -250,10 +256,16 @@ export async function startOpenAiProxy(log: Logger, pool: AgentPool): Promise<Pr
 
       sendJson(res, 404, { error: { message: "Not found" } });
     })().catch((err) => {
-      log.warn("cursor-openai-proxy: request failed", { errorType: err instanceof Error ? err.constructor.name : typeof err });
+      const message = err instanceof Error ? err.message : String(err);
+      log.warn("cursor-openai-proxy: request failed", { errorType: err instanceof Error ? err.constructor.name : typeof err, message });
+      
       if (!res.headersSent) {
-        sendJson(res, err.message?.includes("limit") ? 413 : 500, { 
-          error: { message: err instanceof Error ? err.message : String(err) } 
+        let status = 500;
+        if (message.includes("limit")) status = 413;
+        else if (message.includes("BAD_REQUEST:")) status = 400;
+
+        sendJson(res, status, { 
+          error: { message: message.replace("BAD_REQUEST: ", "") } 
         });
       } else {
         if (res.getHeader("content-type") === "text/event-stream") {

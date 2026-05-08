@@ -55,6 +55,7 @@ describe("ensureCursorProviderConfig", () => {
     ensureCursorProviderConfig(config);
 
     expect(config.enabled_providers).toContain("cursor");
+    expect(config.enabled_providers).toEqual(expect.arrayContaining(["openai", "google"]));
     expect(config.enabled_providers).toHaveLength(3);
   });
 

@@ -50,35 +50,17 @@ const CursorProviderPlugin: Plugin = async ({ client }) => {
       await cleanup();
       process.kill(process.pid, signal);
     });
-  }
+  import { resolveApiKey, cursorAuthHook, getOrRefreshToken, getTokenExpiry, resolveAndPersistApiKey } from "./auth";
+  ...
+      config: async (config) => {
+        // 1. 認証情報を解決（環境変数または保存された情報）
+        const apiKey = await resolveAndPersistApiKey({ auth: (client as any).auth, log });
 
-  return {
-    config: async (config) => {
-      // 1. 認証情報を解決（環境変数または保存された情報）
-      const anyClient = client as any;
-      const auth = anyClient.auth;
-      const savedAuth = (auth && typeof auth.get === "function") ? await auth.get("cursor").catch(() => undefined) : undefined;
-      const resolved = await getOrRefreshToken(savedAuth, async (tokens) => {
-        if (auth && typeof auth.set === "function") {
-          await auth.set({
-            path: { id: "cursor" },
-            body: {
-              type: "oauth",
-              access: tokens.accessToken,
-              refresh: tokens.refreshToken,
-              expires: getTokenExpiry(tokens.accessToken),
-            },
-          }).catch((err: any) => {
-            log.warn("cursor-provider: failed to persist refreshed token", { error: err instanceof Error ? err.message : String(err) });
-          });
-        }
-      });
-      const apiKey = resolved?.apiKey || process.env.CURSOR_API_KEY;
+        let dynamicModels: readonly any[] | null = null;
 
-      let dynamicModels: readonly any[] | null = null;
-
-      // 2. 有効なキー/トークンがあればモデルを取得
-      if (apiKey) {
+        // 2. 有効なキー/トークンがあればモデルを取得
+        if (apiKey) {
+  ...
         let timeoutId: NodeJS.Timeout | undefined;
         try {
           const list = await Promise.race([

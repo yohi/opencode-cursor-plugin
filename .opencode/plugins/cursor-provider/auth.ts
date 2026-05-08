@@ -1,5 +1,6 @@
 import type { AuthHook, ProviderHookContext } from "@opencode-ai/plugin";
 import { generatePKCE } from "./pkce";
+import type { Logger } from "./logger";
 
 const CURSOR_LOGIN_URL = "https://cursor.com/loginDeepControl";
 const CURSOR_POLL_URL = "https://api2.cursor.sh/auth/poll";
@@ -8,9 +9,9 @@ const CURSOR_REFRESH_URL = "https://api2.cursor.sh/auth/exchange_user_api_key";
 const CURSOR_REQUEST_TIMEOUT = 30000;
 const CURSOR_POLL_REQUEST_TIMEOUT = 5000;
 
-export async function resolveApiKey(ctx: ProviderHookContext): Promise<string | undefined> {
+export async function resolveAndPersistApiKey(deps: { auth: any; log?: Logger }): Promise<string | undefined> {
+  const { auth, log } = deps;
   try {
-    const auth = (ctx as any).auth;
     const savedAuth = (auth && typeof auth.get === "function") ? await auth.get("cursor").catch(() => undefined) : undefined;
     const result = await getOrRefreshToken(savedAuth, async (tokens) => {
       if (auth && typeof auth.set === "function") {
@@ -22,8 +23,12 @@ export async function resolveApiKey(ctx: ProviderHookContext): Promise<string | 
             refresh: tokens.refreshToken,
             expires: getTokenExpiry(tokens.accessToken),
           },
-        }).catch(() => {
-          // ignore persistence errors during resolve
+        }).catch((err: any) => {
+          if (log) {
+            log.warn("cursor-provider: failed to persist refreshed token", {
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
         });
       }
     });
@@ -31,6 +36,10 @@ export async function resolveApiKey(ctx: ProviderHookContext): Promise<string | 
   } catch {
     return process.env.CURSOR_API_KEY;
   }
+}
+
+export async function resolveApiKey(ctx: ProviderHookContext): Promise<string | undefined> {
+  return resolveAndPersistApiKey({ auth: (ctx as any).auth });
 }
 
 export async function getOrRefreshToken(

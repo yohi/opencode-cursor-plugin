@@ -1,6 +1,6 @@
 import type { Plugin } from "@opencode-ai/plugin";
 import { config as loadDotenv } from "dotenv";
-import { resolveApiKey, cursorAuthHook, getOrRefreshToken } from "./auth";
+import { resolveApiKey, cursorAuthHook, getOrRefreshToken, getTokenExpiry } from "./auth";
 import { createAgentPool } from "./agent-pool";
 import { ensureCursorProviderConfig } from "./config";
 import { createLogger } from "./logger";
@@ -19,7 +19,8 @@ const CursorProviderPlugin: Plugin = async ({ client }) => {
 
   const log = createLogger((client.app as any).log);
   const pool = createAgentPool({ log, capacity: POOL_CAPACITY });
-  const proxy = await startOpenAiProxy(log, pool);
+  const cwd = (client.app as any).cwd || process.cwd();
+  const proxy = await startOpenAiProxy(log, pool, cwd);
 
   const cleanup = async () => {
     let timeoutId: NodeJS.Timeout | undefined;
@@ -54,8 +55,24 @@ const CursorProviderPlugin: Plugin = async ({ client }) => {
   return {
     config: async (config) => {
       // 1. 認証情報を解決（環境変数または保存された情報）
-      const savedAuth = await (client.auth as any).get("cursor").catch(() => undefined);
-      const resolved = await getOrRefreshToken(savedAuth);
+      const anyClient = client as any;
+      const auth = anyClient.auth;
+      const savedAuth = (auth && typeof auth.get === "function") ? await auth.get("cursor").catch(() => undefined) : undefined;
+      const resolved = await getOrRefreshToken(savedAuth, async (tokens) => {
+        if (auth && typeof auth.set === "function") {
+          await auth.set({
+            path: { id: "cursor" },
+            body: {
+              type: "oauth",
+              access: tokens.accessToken,
+              refresh: tokens.refreshToken,
+              expires: getTokenExpiry(tokens.accessToken),
+            },
+          }).catch((err: any) => {
+            log.warn("cursor-provider: failed to persist refreshed token", { error: err instanceof Error ? err.message : String(err) });
+          });
+        }
+      });
       const apiKey = resolved?.apiKey || process.env.CURSOR_API_KEY;
 
       let dynamicModels: readonly any[] | null = null;
@@ -92,7 +109,7 @@ const CursorProviderPlugin: Plugin = async ({ client }) => {
       }
     },
     auth: cursorAuthHook,
-    provider: createProviderHook({ resolveApiKey, log, pool }),
+    provider: createProviderHook({ resolveApiKey, log, pool, cwd }),
   };
 };
 

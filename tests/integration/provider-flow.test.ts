@@ -66,7 +66,7 @@ describe("integration: provider-flow", () => {
 
   it("プールミス → put、続いてプールヒット → rekey", async () => {
     const pool = createAgentPool({ log, capacity: 8 });
-    const hook = createProviderHook({ resolveApiKey: async () => "test-key", log, pool });
+    const hook = createProviderHook({ resolveApiKey: async () => "test-key", log, pool, cwd: "/test/cwd" });
     const models = await hook.models?.("cursor" as any, {} as any);
     const model: any = models?.["composer-2"];
     expect(model).toBeDefined();
@@ -91,7 +91,7 @@ describe("integration: provider-flow", () => {
     const sdk = await import("@cursor/sdk");
     const beforeAgents = (sdk as any).__agents.length;
     const pool = createAgentPool({ log, capacity: 2 });
-    const hook = createProviderHook({ resolveApiKey: async () => "test-key", log, pool });
+    const hook = createProviderHook({ resolveApiKey: async () => "test-key", log, pool, cwd: "/test/cwd" });
     const models = await hook.models?.("cursor" as any, {} as any);
     const model: any = models?.["composer-2"];
 
@@ -139,7 +139,7 @@ describe("integration: provider-flow", () => {
 
     try {
       const pool = createAgentPool({ log, capacity: 8 });
-      const hook = createProviderHook({ resolveApiKey: async () => "test-key", log, pool });
+      const hook = createProviderHook({ resolveApiKey: async () => "test-key", log, pool, cwd: "/test/cwd" });
       const models = await hook.models?.("cursor" as any, {} as any);
       const model: any = models?.["composer-2"];
 

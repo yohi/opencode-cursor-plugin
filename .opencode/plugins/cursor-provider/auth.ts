@@ -10,15 +10,19 @@ const CURSOR_POLL_REQUEST_TIMEOUT = 5000;
 
 export async function resolveApiKey(ctx: ProviderHookContext): Promise<string | undefined> {
   try {
-    const auth = await (ctx.auth as any)?.get?.("cursor");
-    const result = await getOrRefreshToken(auth);
+    const auth = (ctx as any).auth;
+    const savedAuth = (auth && typeof auth.get === "function") ? await auth.get("cursor").catch(() => undefined) : undefined;
+    const result = await getOrRefreshToken(savedAuth);
     return result?.apiKey || process.env.CURSOR_API_KEY;
   } catch {
     return process.env.CURSOR_API_KEY;
   }
 }
 
-export async function getOrRefreshToken(auth: any): Promise<{ apiKey: string } | undefined> {
+export async function getOrRefreshToken(
+  auth: any,
+  onRefresh?: (tokens: { accessToken: string; refreshToken: string }) => Promise<void>,
+): Promise<{ apiKey: string } | undefined> {
   if (!auth) return undefined;
 
   if (auth.type === "api") {
@@ -31,6 +35,9 @@ export async function getOrRefreshToken(auth: any): Promise<{ apiKey: string } |
     if (auth.expires && auth.expires < Date.now()) {
       try {
         const refreshed = await refreshCursorToken(auth.refresh);
+        if (onRefresh) {
+          await onRefresh(refreshed);
+        }
         return { apiKey: refreshed.accessToken };
       } catch {
         // リフレッシュ失敗時はundefinedを返してフォールバックを促す
@@ -158,7 +165,7 @@ async function refreshCursorToken(refreshToken: string) {
   }
 }
 
-function getTokenExpiry(token: string): number {
+export function getTokenExpiry(token: string): number {
   try {
     const parts = token.split(".");
     const part1 = parts[1];

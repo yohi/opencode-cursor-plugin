@@ -101,12 +101,14 @@ async function pollCursorAuth(uuid: string, verifier: string) {
     throw new Error("Invalid verifier format");
   }
 
-  const url = `${CURSOR_POLL_URL}?uuid=${encodeURIComponent(uuid)}&verifier=${encodeURIComponent(verifier)}`;
+  const url = new URL(CURSOR_POLL_URL);
+  url.searchParams.set("uuid", uuid);
+  url.searchParams.set("verifier", verifier);
 
   // 最大 5分間ポーリング
   for (let i = 0; i < 60; i++) {
     await new Promise((resolve) => setTimeout(resolve, 5000));
-    const res = await fetch(url);
+    const res = await fetch(url.toString());
     if (res.ok) {
       return (await res.json()) as { accessToken: string; refreshToken: string };
     }

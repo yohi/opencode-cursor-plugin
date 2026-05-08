@@ -31,7 +31,9 @@ export function ensureCursorProviderConfig(config: Config, options: { baseURL?: 
       ...(currentOptions.baseURL ? {} : { baseURL: options.baseURL ?? "http://127.0.0.1:32125/v1" }),
     },
     models: {
-      ...fallbackModels,
+      // プロバイダーとして認識させるための最低限の定義
+      // 詳細は ProviderHook.models() で動的に上書き・追加される
+      "composer-2": { name: "Composer 2 (initializing...)" },
       ...currentModels,
     },
   };

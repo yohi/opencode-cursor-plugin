@@ -6,6 +6,8 @@ import { ensureCursorProviderConfig } from "./config";
 import { createLogger } from "./logger";
 import { startOpenAiProxy } from "./openai-proxy";
 import { createProviderHook } from "./provider";
+import { Cursor } from "@cursor/sdk";
+import { STATIC_FALLBACK_MODELS } from "./models";
 
 const POOL_CAPACITY = 8;
 const CLOSEALL_TIMEOUT_MS = 5_000;
@@ -51,7 +53,50 @@ const CursorProviderPlugin: Plugin = async ({ client }) => {
 
   return {
     config: async (config) => {
+      // 1. 認証情報を解決（環境変数または保存された情報）
+      let apiKey = process.env.CURSOR_API_KEY;
+      
+      if (!apiKey) {
+        try {
+          const auth = await (client.auth as any).get({ id: "cursor" });
+          if (auth?.type === "api") {
+            apiKey = auth.key;
+          } else if (auth?.type === "oauth") {
+            apiKey = auth.access;
+          }
+        } catch {
+          // No saved auth yet
+        }
+      }
+
+      let dynamicModels: any[] | null = null;
+
+      // 2. 有効なキー/トークンがあればモデルを取得
+      if (apiKey) {
+        try {
+          dynamicModels = await Cursor.models.list({ apiKey });
+        } catch {
+          // Discovery failed (e.g. network error or expired token)
+        }
+      }
+
       ensureCursorProviderConfig(config, { baseURL: proxy.baseURL });
+
+      if (config.provider?.cursor) {
+        const sourceModels = (dynamicModels && dynamicModels.length > 0) ? dynamicModels : STATIC_FALLBACK_MODELS;
+        const modelsObj: Record<string, any> = {};
+        
+        for (const m of sourceModels) {
+          modelsObj[m.id] = {
+            name: m.displayName || m.name || m.id,
+            limit: {
+              context: m.contextWindow || 200_000,
+              output: 16_384,
+            },
+          };
+        }
+        config.provider.cursor.models = modelsObj;
+      }
     },
     auth: cursorAuthHook,
     provider: createProviderHook({ resolveApiKey, log, pool }),

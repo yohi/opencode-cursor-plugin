@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.3.0](https://github.com/yohi/opencode-cursor-plugin/compare/v1.2.0...v1.3.0) (2026-05-08)
+
+
+### Features
+
+* automatically add 'cursor' to enabled_providers ([6576688](https://github.com/yohi/opencode-cursor-plugin/commit/6576688d6f5a03a60dcd0dd2062fe20eeef7a41b))
+* **config:** cursor プロバイダー設定の重複追加を防ぐテストを追加 ([60d96d9](https://github.com/yohi/opencode-cursor-plugin/commit/60d96d992665f7902e27b770f363103fb84b32d8))
+* **config:** カーソルプロバイダーの自動有効化 ([b72b37a](https://github.com/yohi/opencode-cursor-plugin/commit/b72b37ab0525336dfe68c7645cfa5b1d194aaa91))
+
 ## [1.2.0](https://github.com/yohi/opencode-cursor-plugin/compare/v1.1.0...v1.2.0) (2026-05-08)
 
 

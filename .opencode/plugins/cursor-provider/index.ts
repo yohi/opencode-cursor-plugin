@@ -58,18 +58,19 @@ const CursorProviderPlugin: Plugin = async ({ client }) => {
       const resolved = await getOrRefreshToken(savedAuth);
       const apiKey = resolved?.apiKey || process.env.CURSOR_API_KEY;
 
-      let dynamicModels: any[] | null = null;
+      let dynamicModels: readonly any[] | null = null;
 
       // 2. 有効なキー/トークンがあればモデルを取得
       if (apiKey) {
         let timeoutId: NodeJS.Timeout | undefined;
         try {
-          dynamicModels = await Promise.race([
+          const list = await Promise.race([
             Cursor.models.list({ apiKey }),
             new Promise<never>((_, reject) => {
               timeoutId = setTimeout(() => reject(new Error("models.list timeout")), 10_000);
             }),
           ]);
+          dynamicModels = list;
         } catch {
           // Discovery failed or timed out
           dynamicModels = STATIC_FALLBACK_MODELS;

@@ -126,8 +126,9 @@ async function refreshCursorToken(refreshToken: string) {
 function getTokenExpiry(token: string): number {
   try {
     const parts = token.split(".");
-    if (parts.length < 2) return Date.now() + 3600 * 1000;
-    const payload = JSON.parse(Buffer.from(parts[1], "base64").toString());
+    const part1 = parts[1];
+    if (!part1) return Date.now() + 3600 * 1000;
+    const payload = JSON.parse(Buffer.from(part1, "base64").toString());
     if (typeof payload !== "object" || payload === null || typeof payload.exp !== "number") {
       return Date.now() + 3600 * 1000;
     }

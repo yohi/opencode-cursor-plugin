@@ -8,7 +8,10 @@
   "type": "module",
   "main": "dist/.opencode/plugins/cursor-provider/index.js",
   "exports": {
-    ".": "./dist/.opencode/plugins/cursor-provider/index.js"
+    ".": {
+      "types": "./dist/.opencode/plugins/cursor-provider/index.d.ts",
+      "import": "./dist/.opencode/plugins/cursor-provider/index.js"
+    }
   },
   "files": [
     "dist"

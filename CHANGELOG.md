@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.3.4](https://github.com/yohi/opencode-cursor-plugin/compare/v1.3.3...v1.3.4) (2026-05-09)
+
+
+### Bug Fixes
+
+* adjust tests to match model metadata schema change ([904d33c](https://github.com/yohi/opencode-cursor-plugin/commit/904d33c155a8c3da9ec9de7e78302596027a898e))
+* propagate model status to OpenCode metadata with validation ([e7f9560](https://github.com/yohi/opencode-cursor-plugin/commit/e7f9560d76b821b70207c6a10e47f37b4c6b1ee3))
+* resolve 400 error by removing invalid model status 'active' ([5353b6a](https://github.com/yohi/opencode-cursor-plugin/commit/5353b6ac0f43c18cda9a198439f83cb85ad2cce8))
+
 ## [1.3.3](https://github.com/yohi/opencode-cursor-plugin/compare/v1.3.2...v1.3.3) (2026-05-09)
 
 

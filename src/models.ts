@@ -2,6 +2,7 @@ export interface FallbackModel {
   id: string;
   name: string;
   contextWindow: number;
+  status?: string;
 }
 
 export const DEFAULT_MODEL_ID = "composer-2";
@@ -84,6 +85,11 @@ export interface ModelMeta {
 }
 
 export function makeModelMeta(model: FallbackModel): ModelMeta {
+  const allowedStatuses = ["alpha", "beta", "deprecated"] as const;
+  const validatedStatus = allowedStatuses.includes(model.status as any)
+    ? (model.status as (typeof allowedStatuses)[number])
+    : undefined;
+
   return {
     id: model.id,
     providerID: "cursor",
@@ -126,6 +132,7 @@ export function makeModelMeta(model: FallbackModel): ModelMeta {
       context: model.contextWindow,
       output: 16_384,
     },
+    status: validatedStatus,
     options: {},
     headers: {},
     release_date: "2024-01-01",

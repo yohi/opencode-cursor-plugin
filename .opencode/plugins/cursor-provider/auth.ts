@@ -1,6 +1,6 @@
 import type { AuthHook, ProviderHookContext } from "@opencode-ai/plugin";
-import { generatePKCE } from "./pkce";
-import type { Logger } from "./logger";
+import { generatePKCE } from "./pkce.js";
+import type { Logger } from "./logger.js";
 
 const CURSOR_LOGIN_URL = "https://cursor.com/loginDeepControl";
 const CURSOR_POLL_URL = "https://api2.cursor.sh/auth/poll";

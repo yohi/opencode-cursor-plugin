@@ -1,6 +1,6 @@
 import type { SDKAgent } from "@cursor/sdk";
-import type { Logger } from "./logger";
-import { classifyError, logError } from "./errors";
+import type { Logger } from "./logger.js";
+import { classifyError, logError } from "./errors.js";
 
 export interface StreamProxyInput {
   agent: SDKAgent;

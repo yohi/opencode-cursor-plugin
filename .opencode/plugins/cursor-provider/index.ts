@@ -1,13 +1,13 @@
 import type { Plugin } from "@opencode-ai/plugin";
 import { config as loadDotenv } from "dotenv";
-import { resolveApiKey, cursorAuthHook, getOrRefreshToken, getTokenExpiry, resolveAndPersistApiKey } from "./auth";
-import { createAgentPool } from "./agent-pool";
-import { ensureCursorProviderConfig } from "./config";
-import { createLogger } from "./logger";
-import { startOpenAiProxy } from "./openai-proxy";
-import { createProviderHook } from "./provider";
+import { resolveApiKey, cursorAuthHook, getOrRefreshToken, getTokenExpiry, resolveAndPersistApiKey } from "./auth.js";
+import { createAgentPool } from "./agent-pool.js";
+import { ensureCursorProviderConfig } from "./config.js";
+import { createLogger } from "./logger.js";
+import { startOpenAiProxy } from "./openai-proxy.js";
+import { createProviderHook } from "./provider.js";
 import { Cursor } from "@cursor/sdk";
-import { STATIC_FALLBACK_MODELS, makeModelMeta } from "./models";
+import { STATIC_FALLBACK_MODELS, makeModelMeta } from "./models.js";
 
 const POOL_CAPACITY = 8;
 const CLOSEALL_TIMEOUT_MS = 5_000;

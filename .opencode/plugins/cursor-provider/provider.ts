@@ -1,13 +1,13 @@
 import { Agent, Cursor } from "@cursor/sdk";
 import type { ProviderHook, ProviderHookContext } from "@opencode-ai/plugin";
-import { disposeAgentSafely } from "./agent-cleanup";
-import type { AgentPool } from "./agent-pool";
-import { fingerprintApiKey } from "./agent-pool";
-import { classifyError, logError } from "./errors";
-import type { Logger } from "./logger";
-import { STATIC_FALLBACK_MODELS, makeModelMeta } from "./models";
-import { createStream } from "./stream-proxy";
-import { translate } from "./translator";
+import { disposeAgentSafely } from "./agent-cleanup.js";
+import type { AgentPool } from "./agent-pool.js";
+import { fingerprintApiKey } from "./agent-pool.js";
+import { classifyError, logError } from "./errors.js";
+import type { Logger } from "./logger.js";
+import { STATIC_FALLBACK_MODELS, makeModelMeta } from "./models.js";
+import { createStream } from "./stream-proxy.js";
+import { translate } from "./translator.js";
 
 const MODELS_LIST_TIMEOUT_MS = 10_000;
 

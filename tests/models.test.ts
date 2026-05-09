@@ -3,7 +3,7 @@ import {
   DEFAULT_MODEL_ID,
   STATIC_FALLBACK_MODELS,
   makeModelMeta,
-} from "../.opencode/plugins/cursor-provider/models";
+} from "../.opencode/plugins/cursor-provider/models.js";
 
 describe("STATIC_FALLBACK_MODELS", () => {
   it("composer-2 を含み、すべて id/name/contextWindow フィールドを持つ", () => {

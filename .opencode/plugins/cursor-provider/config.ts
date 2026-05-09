@@ -1,5 +1,5 @@
 import type { Config } from "@opencode-ai/plugin";
-import { STATIC_FALLBACK_MODELS } from "./models";
+import { STATIC_FALLBACK_MODELS } from "./models.js";
 
 const CURSOR_PROVIDER_ID = "cursor";
 

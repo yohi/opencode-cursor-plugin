@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { cursorAuthHook, resolveApiKey } from "../.opencode/plugins/cursor-provider/auth";
+import { cursorAuthHook, resolveApiKey } from "../.opencode/plugins/cursor-provider/auth.js";
 
 describe("resolveApiKey", () => {
   const original = process.env.CURSOR_API_KEY;

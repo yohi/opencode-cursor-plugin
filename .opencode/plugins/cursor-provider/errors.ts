@@ -7,7 +7,7 @@ import {
   RateLimitError,
   UnknownAgentError,
 } from "@cursor/sdk";
-import type { Logger } from "./logger";
+import type { Logger } from "./logger.js";
 
 export type RetryPhase = "create" | "pre-stream" | "in-stream" | "post-stream";
 

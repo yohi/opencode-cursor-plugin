@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { SDKAgent } from "@cursor/sdk";
-import { disposeAgentSafely } from "./agent-cleanup";
-import type { Logger } from "./logger";
+import { disposeAgentSafely } from "./agent-cleanup.js";
+import type { Logger } from "./logger.js";
 
 export interface PooledAgent {
   agent: SDKAgent;

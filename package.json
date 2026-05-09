@@ -6,18 +6,19 @@
     "registry": "https://npm.pkg.github.com"
   },
   "type": "module",
-  "main": ".opencode/plugins/cursor-provider/index.ts",
+  "main": "dist/.opencode/plugins/cursor-provider/index.js",
   "exports": {
-    ".": "./.opencode/plugins/cursor-provider/index.ts"
+    ".": "./dist/.opencode/plugins/cursor-provider/index.js"
   },
   "files": [
-    ".opencode/plugins"
+    "dist"
   ],
   "engines": {
     "node": ">=20.0.0",
     "pnpm": ">=9.12.0"
   },
   "scripts": {
+    "build": "tsc --project tsconfig.json --outDir dist --noEmit false",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

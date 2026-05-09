@@ -1,5 +1,5 @@
 import type { SDKAgent } from "@cursor/sdk";
-import type { Logger } from "./logger";
+import type { Logger } from "./logger.js";
 
 export const DISPOSE_TIMEOUT_MS = 5_000;
 

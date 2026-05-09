@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { ensureCursorProviderConfig } from "../.opencode/plugins/cursor-provider/config";
-import CursorProviderPlugin from "../.opencode/plugins/cursor-provider/index";
+import { ensureCursorProviderConfig } from "../.opencode/plugins/cursor-provider/config.js";
+import CursorProviderPlugin from "../.opencode/plugins/cursor-provider/index.js";
 
 vi.mock("../.opencode/plugins/cursor-provider/openai-proxy", () => ({
   startOpenAiProxy: vi.fn().mockResolvedValue({

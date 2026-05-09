@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { createLogger } from "../.opencode/plugins/cursor-provider/logger";
-import { createStream } from "../.opencode/plugins/cursor-provider/stream-proxy";
+import { createLogger } from "../.opencode/plugins/cursor-provider/logger.js";
+import { createStream } from "../.opencode/plugins/cursor-provider/stream-proxy.js";
 
 vi.mock("@cursor/sdk", () => ({
   NetworkError: class extends Error { isRetryable = true; },

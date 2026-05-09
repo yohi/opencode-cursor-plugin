@@ -11,7 +11,8 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
     "declaration": true,
+    "outDir": "dist",
     "types": ["node", "vitest/globals"]
   },
-  "include": [".opencode/plugins/**/*.ts", "tests/**/*.ts", "vitest.config.ts"]
+  "include": ["src/**/*.ts", "tests/**/*.ts", "vitest.config.ts"]
 }

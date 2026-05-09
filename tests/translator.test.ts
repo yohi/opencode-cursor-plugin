@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { translate, type LanguageModelV2Prompt } from "../.opencode/plugins/cursor-provider/translator.js";
+import { translate, type LanguageModelV2Prompt } from "../src/translator.js";
 
 function sys(text: string) {
   return { role: "system" as const, content: text };

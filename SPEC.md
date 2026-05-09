@@ -56,7 +56,7 @@ OpenCode のメイン LLM プロバイダーとして Cursor Headless SDK (`@cur
 [OpenCode UI] (リアルタイム描画)
 ```
 
-## 4. モジュール構成 (`.opencode/plugins/cursor-provider/`)
+## 4. モジュール構成 (`src/`)
 
 - `index.ts`: エントリ。Plugin 関数本体、終了フック
 - `config.ts`: `provider.cursor` の自動注入

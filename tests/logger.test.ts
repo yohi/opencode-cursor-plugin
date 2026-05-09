@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createLogger } from "../.opencode/plugins/cursor-provider/logger.js";
+import { createLogger } from "../src/logger.js";
 
 describe("createLogger", () => {
   it("メソッド形式の rawLog (info/warn/error/debug) に委譲する", () => {

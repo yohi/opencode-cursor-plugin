@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { disposeAgentSafely } from "../.opencode/plugins/cursor-provider/agent-cleanup.js";
-import { createLogger } from "../.opencode/plugins/cursor-provider/logger.js";
+import { disposeAgentSafely } from "../src/agent-cleanup.js";
+import { createLogger } from "../src/logger.js";
 
 describe("disposeAgentSafely", () => {
   beforeEach(() => {

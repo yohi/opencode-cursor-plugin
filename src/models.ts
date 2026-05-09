@@ -77,7 +77,7 @@ export interface ModelMeta {
     context: number;
     output: number;
   };
-  status: "active";
+  status?: "alpha" | "beta" | "deprecated";
   options: Record<string, unknown>;
   headers: Record<string, string>;
   release_date: string;
@@ -126,7 +126,6 @@ export function makeModelMeta(model: FallbackModel): ModelMeta {
       context: model.contextWindow,
       output: 16_384,
     },
-    status: "active",
     options: {},
     headers: {},
     release_date: "2024-01-01",

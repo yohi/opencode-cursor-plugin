@@ -86,9 +86,10 @@ export interface ModelMeta {
 
 export function makeModelMeta(model: FallbackModel): ModelMeta {
   const allowedStatuses = ["alpha", "beta", "deprecated"] as const;
-  const validatedStatus = allowedStatuses.includes(model.status as any)
-    ? (model.status as (typeof allowedStatuses)[number])
-    : undefined;
+  type AllowedStatus = (typeof allowedStatuses)[number];
+
+  const isAllowedStatus = (status?: string): status is AllowedStatus =>
+    allowedStatuses.includes(status as any);
 
   return {
     id: model.id,
@@ -132,7 +133,7 @@ export function makeModelMeta(model: FallbackModel): ModelMeta {
       context: model.contextWindow,
       output: 16_384,
     },
-    status: validatedStatus,
+    ...(isAllowedStatus(model.status) ? { status: model.status } : {}),
     options: {},
     headers: {},
     release_date: "2024-01-01",

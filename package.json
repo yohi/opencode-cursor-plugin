@@ -22,6 +22,7 @@
   },
   "scripts": {
     "build": "tsc --project tsconfig.json --outDir dist --noEmit false",
+    "prepublishOnly": "pnpm build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

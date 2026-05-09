@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.3](https://github.com/yohi/opencode-cursor-plugin/compare/v1.3.2...v1.3.3) (2026-05-09)
+
+
+### Bug Fixes
+
+* **ci:** ensure build is run before publish ([515bb48](https://github.com/yohi/opencode-cursor-plugin/commit/515bb48f41fec44a7ed89eb3cdf2c7c23a962ba9))
+* remove invalid comment in package.json to fix parse error ([fa3cc5a](https://github.com/yohi/opencode-cursor-plugin/commit/fa3cc5adc6a223ed05e63d7d0427726e5d6c8a59))
+
 ## [1.3.2](https://github.com/yohi/opencode-cursor-plugin/compare/v1.3.1...v1.3.2) (2026-05-09)
 
 

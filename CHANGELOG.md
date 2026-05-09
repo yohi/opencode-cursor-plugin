@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.3.2](https://github.com/yohi/opencode-cursor-plugin/compare/v1.3.1...v1.3.2) (2026-05-09)
+
+
+### Bug Fixes
+
+* **provider:** opencode-cursor サブモジュールの削除により認識問題を修正 ([7872f57](https://github.com/yohi/opencode-cursor-plugin/commit/7872f5708ba1c64c240e716add4242587bfd9ac4))
+* README のローカルソースパスと tsconfig 設定を修正 ([7fe3aa8](https://github.com/yohi/opencode-cursor-plugin/commit/7fe3aa80b32e750fc84c2b9d0886eb6f733beb92))
+* パッケージ構成を隠しディレクトリからsrcへ移動し、プロバイダー認識エラーを解消 ([975a89d](https://github.com/yohi/opencode-cursor-plugin/commit/975a89d9fa1e018daa77032cfe1e422522ba6574))
+
 ## [1.3.2](https://github.com/yohi/opencode-cursor-plugin/compare/v1.3.1...v1.3.2) (2026-05-10)
 
 ### Bug Fixes

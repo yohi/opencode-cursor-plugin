@@ -31,8 +31,20 @@ describe("makeModelMeta", () => {
     expect(meta.api.id).toBe("cursor");
     expect(meta.limit.context).toBe(200_000);
     expect(meta.limit.output).toBeGreaterThan(0);
-    expect(meta.status).toBe("active");
     expect(meta.capabilities.input.text).toBe(true);
     expect(meta.capabilities.output.text).toBe(true);
+  });
+
+  it("許可された status (beta, deprecated等) を正しく引き継ぐ", () => {
+    const metaBeta = makeModelMeta({ id: "m1", name: "M1", contextWindow: 100, status: "beta" });
+    expect(metaBeta.status).toBe("beta");
+
+    const metaDep = makeModelMeta({ id: "m2", name: "M2", contextWindow: 100, status: "deprecated" });
+    expect(metaDep.status).toBe("deprecated");
+  });
+
+  it("許可されていない status (active等) は undefined になる", () => {
+    const metaActive = makeModelMeta({ id: "m1", name: "M1", contextWindow: 100, status: "active" });
+    expect(metaActive.status).toBeUndefined();
   });
 });

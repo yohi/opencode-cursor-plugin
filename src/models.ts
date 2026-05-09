@@ -89,7 +89,7 @@ export function makeModelMeta(model: FallbackModel): ModelMeta {
   type AllowedStatus = (typeof allowedStatuses)[number];
 
   const isAllowedStatus = (status?: string): status is AllowedStatus =>
-    allowedStatuses.includes(status as any);
+    !!status && (allowedStatuses as readonly string[]).includes(status);
 
   return {
     id: model.id,

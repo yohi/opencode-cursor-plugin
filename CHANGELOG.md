@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.1](https://github.com/yohi/opencode-cursor-plugin/compare/v1.3.0...v1.3.1) (2026-05-09)
+
+
+### Bug Fixes
+
+* ESM互換性のためのインポート拡張子追加とpackage.jsonの修正 ([c560e25](https://github.com/yohi/opencode-cursor-plugin/commit/c560e258370c21d50e37747361a0818d9693d10e))
+* 型定義生成の有効化とテストのモックパス修正 ([0204f87](https://github.com/yohi/opencode-cursor-plugin/commit/0204f873b98063151199e474184b1b8c10b70d66))
+
 ## [1.3.0](https://github.com/yohi/opencode-cursor-plugin/compare/v1.2.0...v1.3.0) (2026-05-08)
 
 

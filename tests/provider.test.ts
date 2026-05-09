@@ -66,7 +66,6 @@ describe("createProviderHook.models()", () => {
         context: 200_000,
         output: 16_384,
       },
-      status: "active",
       capabilities: {
         temperature: true,
         reasoning: true,

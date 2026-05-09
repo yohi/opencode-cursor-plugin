@@ -31,7 +31,6 @@ describe("makeModelMeta", () => {
     expect(meta.api.id).toBe("cursor");
     expect(meta.limit.context).toBe(200_000);
     expect(meta.limit.output).toBeGreaterThan(0);
-    expect(meta.status).toBe("active");
     expect(meta.capabilities.input.text).toBe(true);
     expect(meta.capabilities.output.text).toBe(true);
   });

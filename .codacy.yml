@@ -24,11 +24,11 @@ engines:
       - "AGENTS.md"
       - "**/AGENTS.md"
 ignore_issues:
-  - path: ".opencode/plugins/cursor-provider/agent-cleanup.ts"
+  - path: "src/agent-cleanup.ts"
     pattern: ".*non-static data.*"
   - path: "**/agent-cleanup.ts"
     pattern: ".*non-static data.*"
   - path: "**/agent-cleanup.ts"
     pattern: "Using non-static data to retrieve and run functions from the object is dangerous"
-  - path: ".opencode/plugins/cursor-provider/auth.ts"
+  - path: "src/auth.ts"
     pattern: ".*allows user-controlled URLs to be passed directly to HTTP client libraries.*"

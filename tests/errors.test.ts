@@ -8,7 +8,7 @@ import {
   UnknownAgentError,
   CursorSdkError,
 } from "@cursor/sdk";
-import { classifyError, logError } from "../.opencode/plugins/cursor-provider/errors.js";
+import { classifyError, logError } from "../src/errors.js";
 
 describe("classifyError", () => {
   it("AuthenticationError は全 phase で retry: false", () => {

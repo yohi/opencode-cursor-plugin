@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { createAgentPool } from "../../.opencode/plugins/cursor-provider/agent-pool.js";
-import { createLogger } from "../../.opencode/plugins/cursor-provider/logger.js";
-import { createProviderHook } from "../../.opencode/plugins/cursor-provider/provider.js";
+import { createAgentPool } from "../../src/agent-pool.js";
+import { createLogger } from "../../src/logger.js";
+import { createProviderHook } from "../../src/provider.js";
 
 vi.mock("@cursor/sdk", async () => {
   const agents: any[] = [];

@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.2](https://github.com/yohi/opencode-cursor-plugin/compare/v1.3.1...v1.3.2) (2026-05-10)
+
+### Bug Fixes
+
+* パッケージ化された際のプロバイダー認識エラーを解消 (隠しディレクトリからのソース移動)
+
 ## [1.3.1](https://github.com/yohi/opencode-cursor-plugin/compare/v1.3.0...v1.3.1) (2026-05-09)
 
 

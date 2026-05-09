@@ -24,7 +24,7 @@ To verify your changes, please use the following commands. Ideally, these should
 <documentation_map>
 To keep this file lightweight (Progressive Disclosure), detailed context is externalized. Please read the following documents when relevant to your task:
 
-- **`SPEC.md`**: Contains the full architectural design, state lifecycle (e.g., AgentPool exclusive checkout), error handling, and data flow. **Read this before making any architectural changes to `.opencode/plugins/cursor-provider/` modules.**
+- **`SPEC.md`**: Contains the full architectural design, state lifecycle (e.g., AgentPool exclusive checkout), error handling, and data flow. **Read this before making any architectural changes to `src/` modules.**
 - **`README.md`**: Contains user-facing setup instructions, environment variable requirements, and plugin installation guides.
 </documentation_map>
 

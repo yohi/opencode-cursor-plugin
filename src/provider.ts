@@ -45,7 +45,7 @@ export function createProviderHook(deps: {
       const dynamicModels = apiKey ? await listModelsWithTimeout(apiKey, log) : null;
       const sourceModels = dynamicModels ?? STATIC_FALLBACK_MODELS;
 
-      const result: Record<string, unknown> = {};
+      const result: Record<string, any> = {};
       for (const model of sourceModels) {
         const meta = makeModelMeta({
           id: model.id,

@@ -123,7 +123,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
   } else {
     try {
       const { Agent } = await import("@cursor/sdk");
-      agent = await Agent.create({ apiKey, model: { id: modelId }, local: { cwd } }) as SDKAgent;
+      agent = await Agent.create({ apiKey, model: { id: modelId }, cloud: {} }) as SDKAgent;
       messageToSend = translated.fullPromptOnMiss;
       log.debug("cursor-openai-proxy: pool miss", { prefixHash: translated.prefixHash.slice(0, 8) });
     } catch (err) {

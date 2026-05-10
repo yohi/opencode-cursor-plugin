@@ -177,7 +177,7 @@ async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log
   const { Agent } = await import("@cursor/sdk");
   const { apiKey, modelId, log, cwd } = deps;
   try {
-    return await Agent.create({ apiKey, model: { id: modelId }, local: { cwd } }) as SDKAgent;
+    return await Agent.create({ apiKey, model: { id: modelId }, cloud: {} }) as SDKAgent;
   } catch (err) {
     log.error("cursor-provider: Agent.create failed", {
       modelId,

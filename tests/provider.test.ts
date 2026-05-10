@@ -111,6 +111,8 @@ describe("createProviderHook.models()", () => {
     vi.mocked(sdk.Cursor.models.list).mockImplementation(() => new Promise(() => {}));
 
     const resultPromise = hook.models?.("cursor" as any, ctx);
+    // Allow promises to settle so setTimeout is queued
+    await new Promise(process.nextTick);
     await vi.advanceTimersByTimeAsync(10_000);
 
     const result = await resultPromise;

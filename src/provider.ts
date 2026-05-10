@@ -31,7 +31,7 @@ async function listModelsWithTimeout(apiKey: string, log: Logger): Promise<Fallb
 }
 
 export function createProviderHook(deps: {
-  resolveApiKey: (ctx: ProviderHookContext) => Promise<string | undefined>;
+  resolveApiKey: (ctx: ProviderHookContext, log?: Logger) => Promise<string | undefined>;
   log: Logger;
   pool: AgentPool;
 }): ProviderHook {
@@ -41,7 +41,7 @@ export function createProviderHook(deps: {
   return {
     id: "cursor",
     async models(_provider: unknown, ctx: ProviderHookContext) {
-      const apiKey = await resolveApiKey(ctx);
+      const apiKey = await resolveApiKey(ctx, log);
       const dynamicModels = apiKey ? await listModelsWithTimeout(apiKey, log) : null;
       const sourceModels = dynamicModels ?? STATIC_FALLBACK_MODELS;
 

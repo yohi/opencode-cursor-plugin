@@ -79,7 +79,7 @@ describe("ensureCursorProviderConfig", () => {
     } as any);
     const config: any = {};
 
-    await plugin.onConfig?.(config);
+    await plugin.config?.(config);
 
     expect(config.provider.cursor.id).toBe("cursor");
     expect(config.provider.cursor.options.baseURL).toBe("http://127.0.0.1:32125/v1");

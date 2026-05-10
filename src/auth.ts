@@ -24,10 +24,24 @@ export async function resolveAndPersistApiKey(deps: {
       typeof obj === "object" && obj !== null && "get" in obj && typeof (obj as Record<string, unknown>).get === "function";
     const hasSet = (obj: unknown): obj is { set: (...args: unknown[]) => unknown } => 
       typeof obj === "object" && obj !== null && "set" in obj && typeof (obj as Record<string, unknown>).set === "function";
+    const hasAuthenticate = (obj: unknown): obj is { authenticate: (...args: unknown[]) => unknown } => 
+      typeof obj === "object" && obj !== null && "authenticate" in obj && typeof (obj as Record<string, unknown>).authenticate === "function";
 
-    const savedAuth = hasGet(auth) 
-      ? await (auth as { get: (...args: unknown[]) => Promise<unknown> }).get.call(auth, { path: { id: "cursor" } }).catch(() => undefined) 
-      : undefined;
+    let savedAuth: unknown;
+    if (hasGet(auth)) {
+      savedAuth = await (auth as { get: (...args: unknown[]) => Promise<unknown> }).get.call(auth, { path: { id: "cursor" } }).catch(() => undefined);
+    } else if (hasAuthenticate(auth)) {
+      const authPromise = (auth as { authenticate: (...args: unknown[]) => Promise<unknown> }).authenticate.call(auth, { id: "cursor" });
+      savedAuth = await Promise.race([
+        authPromise,
+        new Promise<undefined>((_, reject) => setTimeout(() => reject(new Error("auth.authenticate timeout")), 2000))
+      ]).catch((err) => {
+        if (log) {
+          log.warn("cursor-provider: auth.authenticate failed or timed out", { error: err instanceof Error ? err.message : String(err) });
+        }
+        return undefined;
+      });
+    }
     
     const result = await getOrRefreshToken(savedAuth || auth, async (tokens) => {
       if (hasSet(auth)) {

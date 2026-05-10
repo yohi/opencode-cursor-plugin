@@ -58,7 +58,7 @@ export async function resolveAndPersistApiKey(deps: { auth: any; log?: Logger })
 }
 
 export async function resolveApiKey(ctx: ProviderHookContext, log?: Logger): Promise<string | undefined> {
-  return resolveAndPersistApiKey({ auth: (ctx as any).auth, log });
+  return resolveAndPersistApiKey({ auth: ctx.auth, log });
 }
 
 export async function getOrRefreshToken(

@@ -11,14 +11,27 @@ import { STATIC_FALLBACK_MODELS, makeModelMeta } from "./models.js";
 const POOL_CAPACITY = 8;
 const CLOSEALL_TIMEOUT_MS = 5_000;
 
-const CursorProviderPlugin: Plugin = async ({ client }) => {
+/**
+ * OpenCode client with extended properties used by this plugin.
+ */
+interface ExtendedClient {
+  app: {
+    log: any; // Raw log methods
+    cwd?: string;
+  };
+  auth?: any;
+}
+
+const CursorProviderPlugin: Plugin = async ({ client: rawClient }) => {
+  const client = rawClient as unknown as ExtendedClient;
+
   if (process.env.NODE_ENV !== "test") {
     loadDotenv();
   }
 
-  const log = createLogger((client.app as any).log);
+  const log = createLogger(client.app.log);
   const pool = createAgentPool({ log, capacity: POOL_CAPACITY });
-  const cwd = (client.app as any).cwd || process.cwd();
+  const cwd = client.app.cwd || process.cwd();
   const proxy = await startOpenAiProxy(log, pool, cwd);
 
   const cleanup = async () => {
@@ -51,7 +64,7 @@ const CursorProviderPlugin: Plugin = async ({ client }) => {
     });
   }
 
-  const auth = (client as any).auth;
+  const auth = client.auth;
 
   return {
     config: async (config) => {

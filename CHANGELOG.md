@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.5.0](https://github.com/yohi/opencode-cursor-plugin/compare/v1.4.0...v1.5.0) (2026-05-10)
+
+
+### Features
+
+* 認証情報の解決方法を改善し、最新の2026年モデルを追加 ([f52e60c](https://github.com/yohi/opencode-cursor-plugin/commit/f52e60c232476e7c15d57dfbb57ea61f809395b6))
+
+
+### Bug Fixes
+
+* カレンダー妥当性の検証強化とモデル能力定義の網羅 (assertISODateStringの改善, Claude/GPT-5の能力追加) ([889c8c2](https://github.com/yohi/opencode-cursor-plugin/commit/889c8c21d1bcbaa1aa24cf80ff4027c183a0473d))
+* コードレビューの指摘事項を修正 (型安全性、ロギング、テストの改善) ([d89f8eb](https://github.com/yohi/opencode-cursor-plugin/commit/d89f8ebca425de78091fd31f70c3f1ffba47e518))
+* コードレビューの指摘事項を反映 (capabilities, 型定義, ログ, テストの最終調整) ([672574f](https://github.com/yohi/opencode-cursor-plugin/commit/672574f6f43471a306c6e6ad9529f76f2b6182e3))
+* メタデータの一貫性向上とバリデーションの徹底 (attachmentフラグの自動同期, releaseDateのランタイムチェック追加) ([5d7a1d6](https://github.com/yohi/opencode-cursor-plugin/commit/5d7a1d617d65d22c6f2f86ce1c41216ef8776c46))
+* リソース管理の適正化とテストの安定性向上 (timeoutの解除、Codacy警告対応、FakeTimersのクリーンアップ) ([e4153eb](https://github.com/yohi/opencode-cursor-plugin/commit/e4153eb9f34f4ed7dd1ee481ec264a33aef09eea))
+* 非空判定演算子(!)を削除し、型安全な実装に変更 (Codacy警告への対応) ([9fb6b98](https://github.com/yohi/opencode-cursor-plugin/commit/9fb6b98cfc70e024eaa85656180e89c1a0a4112d))
+
 ## [1.4.0](https://github.com/yohi/opencode-cursor-plugin/compare/v1.3.8...v1.4.0) (2026-05-10)
 
 

@@ -15,8 +15,8 @@ vi.mock("@cursor/sdk", async () => {
       create: vi.fn(async () => {
         const agent = {
           send: vi.fn(async (_message: string, opts: any) => {
-            opts.onDelta({ type: "text-delta", text: "hello" });
-            opts.onDelta({ type: "turn-ended" });
+            opts.onDelta({ update: { type: "text-delta", text: "hello" } });
+            opts.onDelta({ update: { type: "turn-ended" } });
             return { wait: async () => ({ status: "finished" }) };
           }),
           [Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -115,7 +115,7 @@ describe("integration: provider-flow", () => {
       if (created === 1) {
         return {
           send: vi.fn(async (_message: string, opts: any) => {
-            opts.onDelta({ type: "text-delta", text: "hello" });
+            opts.onDelta({ update: { type: "text-delta", text: "hello" } });
             await new Promise((resolve) => setTimeout(resolve, 10));
             return { wait: async () => ({ status: "cancelled" }) };
           }),
@@ -126,8 +126,8 @@ describe("integration: provider-flow", () => {
 
       const agent = {
         send: vi.fn(async (_message: string, opts: any) => {
-          opts.onDelta({ type: "text-delta", text: "hello" });
-          opts.onDelta({ type: "turn-ended" });
+          opts.onDelta({ update: { type: "text-delta", text: "hello" } });
+          opts.onDelta({ update: { type: "turn-ended" } });
           return { wait: async () => ({ status: "finished" }) };
         }),
         [Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),

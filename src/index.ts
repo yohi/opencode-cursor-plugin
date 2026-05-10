@@ -1,25 +1,37 @@
-import type { Plugin } from "@opencode-ai/plugin";
+import type { Plugin, ProviderHookContext } from "@opencode-ai/plugin";
 import { config as loadDotenv } from "dotenv";
 import { resolveApiKey, cursorAuthHook, getOrRefreshToken, getTokenExpiry, resolveAndPersistApiKey } from "./auth.js";
 import { createAgentPool } from "./agent-pool.js";
 import { ensureCursorProviderConfig } from "./config.js";
-import { createLogger } from "./logger.js";
+import { createLogger, type RawLogFn, type RawLogMethods } from "./logger.js";
 import { startOpenAiProxy } from "./openai-proxy.js";
 import { createProviderHook } from "./provider.js";
-import { Cursor } from "@cursor/sdk";
-import { STATIC_FALLBACK_MODELS, makeModelMeta } from "./models.js";
+import { STATIC_FALLBACK_MODELS, makeModelMeta, type ModelMeta } from "./models.js";
 
 const POOL_CAPACITY = 8;
 const CLOSEALL_TIMEOUT_MS = 5_000;
 
-const CursorProviderPlugin: Plugin = async ({ client }) => {
+/**
+ * OpenCode client with extended properties used by this plugin.
+ */
+interface ExtendedClient {
+  app: {
+    log: Parameters<typeof createLogger>[0];
+    cwd?: string;
+  };
+  auth?: unknown;
+}
+
+const CursorProviderPlugin: Plugin = async (input) => {
+  const client = input.client as ExtendedClient;
+
   if (process.env.NODE_ENV !== "test") {
     loadDotenv();
   }
 
-  const log = createLogger((client.app as any).log);
+  const log = createLogger(client.app.log);
   const pool = createAgentPool({ log, capacity: POOL_CAPACITY });
-  const cwd = (client.app as any).cwd || process.cwd();
+  const cwd = client.app.cwd || process.cwd();
   const proxy = await startOpenAiProxy(log, pool, cwd);
 
   const cleanup = async () => {
@@ -52,10 +64,12 @@ const CursorProviderPlugin: Plugin = async ({ client }) => {
     });
   }
 
+  const auth = client.auth;
+
   return {
     config: async (config) => {
-      // 1. 認証情報を解決（環境変数または保存された情報）
-      const apiKey = await resolveAndPersistApiKey({ auth: (client as any).auth, log });
+      // 1. 認証情報を解決
+      const apiKey = await resolveAndPersistApiKey({ auth, log });
 
       let dynamicModels: readonly any[] | null = null;
 
@@ -63,6 +77,7 @@ const CursorProviderPlugin: Plugin = async ({ client }) => {
       if (apiKey) {
         let timeoutId: NodeJS.Timeout | undefined;
         try {
+          const { Cursor } = await import("@cursor/sdk");
           const list = await Promise.race([
             Cursor.models.list({ apiKey }),
             new Promise<never>((_, reject) => {
@@ -82,8 +97,7 @@ const CursorProviderPlugin: Plugin = async ({ client }) => {
 
       if (config.provider?.cursor) {
         const sourceModels = (dynamicModels && dynamicModels.length > 0) ? dynamicModels : STATIC_FALLBACK_MODELS;
-        const modelsObj: Record<string, any> = {};
-        
+        const modelsObj: Record<string, ModelMeta> = {};
         for (const m of sourceModels) {
           modelsObj[m.id] = makeModelMeta(m);
         }

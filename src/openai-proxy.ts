@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { Agent } from "@cursor/sdk";
+import type { SDKAgent } from "@cursor/sdk";
 import type { Logger } from "./logger.js";
 import { STATIC_FALLBACK_MODELS } from "./models.js";
 import { translate, type LanguageModelV2Prompt } from "./translator.js";
@@ -14,7 +14,7 @@ type ProxyServer = {
 
 type ChatMessage = {
   role: "system" | "user" | "assistant" | "tool";
-  content: string | Array<{ type: string; text?: string; [k: string]: any }>;
+  content: string | Array<{ type: string; text?: string; [k: string]: unknown }>;
 };
 
 type ChatCompletionRequest = {
@@ -113,8 +113,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
   };
   req.on("aborted", onDisconnect);
   res.on("close", onDisconnect);
-
-  let agent: any;
+  let agent: SDKAgent;
   let messageToSend: string;
 
   if (hit) {
@@ -123,12 +122,16 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
     log.debug("cursor-openai-proxy: pool hit", { prefixHash: translated.prefixHash.slice(0, 8) });
   } else {
     try {
-      agent = await Agent.create({ apiKey, model: { id: modelId }, local: { cwd } });
+      const { Agent } = await import("@cursor/sdk");
+      agent = await Agent.create({ apiKey, model: { id: modelId }, local: { cwd } }) as SDKAgent;
       messageToSend = translated.fullPromptOnMiss;
       log.debug("cursor-openai-proxy: pool miss", { prefixHash: translated.prefixHash.slice(0, 8) });
     } catch (err) {
+      log.error("cursor-openai-proxy: Agent creation failed", {
+        error: err instanceof Error ? { ...err, message: err.message, stack: err.stack } : err,
+      });
       if (!res.headersSent) {
-        sendJson(res, 500, { error: { message: `Agent creation failed: ${err instanceof Error ? err.message : String(err)}` } });
+        sendJson(res, 500, { error: { message: "Agent creation failed" } });
       }
       return;
     }
@@ -138,18 +141,14 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
     let text = "";
     try {
       const run = await agent.send(messageToSend, {
-        onDelta(update: any) {
-          if (update.type === "text-delta" || update.type === "thinking-delta") text += update.text ?? "";
+        onDelta: ({ update }) => {
+          if (update.type === "text-delta" || update.type === "thinking-delta") {
+            text += update.text ?? "";
+          }
         },
       });
 
-      const waitPromise = (run as any).wait();
-      const result = await Promise.race([
-        waitPromise,
-        new Promise<never>((_, reject) => {
-          controller.signal.addEventListener("abort", () => reject(new Error("aborted")));
-        }),
-      ]);
+      const result = await run.wait();
 
       if (result.status === "finished") {
         await pool.put(translated.nextHash, {
@@ -187,7 +186,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
   try {
     const id = `cursor-${Date.now()}`;
     const run = await agent.send(messageToSend, {
-      onDelta(update: any) {
+      onDelta({ update }) {
         if (update.type !== "text-delta" && update.type !== "thinking-delta") return;
         writeSse(res, {
           id,
@@ -199,13 +198,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
       },
     });
 
-    const waitPromise = (run as any).wait();
-    const result = await Promise.race([
-      waitPromise,
-      new Promise<never>((_, reject) => {
-        controller.signal.addEventListener("abort", () => reject(new Error("aborted")));
-      }),
-    ]);
+    const result = await run.wait();
 
     if (result.status === "finished") {
       await pool.put(translated.nextHash, {

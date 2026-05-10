@@ -7,14 +7,14 @@ export interface Logger {
 
 type Level = "info" | "warn" | "error" | "debug";
 
-interface RawLogMethods {
+export interface RawLogMethods {
   info?: (message: string, extra?: Record<string, unknown>) => void;
   warn?: (message: string, extra?: Record<string, unknown>) => void;
   error?: (message: string, extra?: Record<string, unknown>) => void;
   debug?: (message: string, extra?: Record<string, unknown>) => void;
 }
 
-type RawLogFn = (payload: {
+export type RawLogFn = (payload: {
   body: { service: string; level: Level; message: string; extra?: Record<string, unknown> };
 }) => void;
 

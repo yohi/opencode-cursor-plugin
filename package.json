@@ -6,11 +6,11 @@
     "registry": "https://npm.pkg.github.com"
   },
   "type": "module",
-  "main": "dist/src/index.js",
+  "main": "dist/index.js",
   "exports": {
     ".": {
-      "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     }
   },
   "files": [
@@ -29,7 +29,7 @@
     "test:e2e": "bash scripts/e2e-cursor-provider.sh"
   },
   "dependencies": {
-    "@cursor/sdk": "^1.0.10",
+    "@cursor/sdk": "^1.0.12",
     "dotenv": "^16.4.5",
     "zod": "^4.1.8"
   },

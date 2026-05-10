@@ -1,21 +1,21 @@
-import { Agent, Cursor } from "@cursor/sdk";
 import type { ProviderHook, ProviderHookContext } from "@opencode-ai/plugin";
+import type { SDKAgent } from "@cursor/sdk";
 import { disposeAgentSafely } from "./agent-cleanup.js";
 import type { AgentPool } from "./agent-pool.js";
 import { fingerprintApiKey } from "./agent-pool.js";
 import { classifyError, logError } from "./errors.js";
 import type { Logger } from "./logger.js";
-import { STATIC_FALLBACK_MODELS, makeModelMeta } from "./models.js";
+import { STATIC_FALLBACK_MODELS, makeModelMeta, type FallbackModel } from "./models.js";
 import { createStream } from "./stream-proxy.js";
-import { translate } from "./translator.js";
+import { translate, type LanguageModelV2Prompt } from "./translator.js";
 
 const MODELS_LIST_TIMEOUT_MS = 10_000;
-
-async function listModelsWithTimeout(apiKey: string, log: Logger) {
+async function listModelsWithTimeout(apiKey: string, log: Logger): Promise<FallbackModel[] | null> {
+  const { Cursor } = await import("@cursor/sdk");
   let timeoutId: NodeJS.Timeout | undefined;
   try {
     return await Promise.race([
-      Cursor.models.list({ apiKey }),
+      Cursor.models.list({ apiKey }) as unknown as Promise<FallbackModel[]>,
       new Promise<never>((_, reject) => {
         timeoutId = setTimeout(() => reject(new Error("models.list timeout")), MODELS_LIST_TIMEOUT_MS);
       }),
@@ -41,13 +41,13 @@ export function createProviderHook(deps: {
 
   return {
     id: "cursor",
-    async models(_provider: any, ctx: ProviderHookContext) {
+    async models(_provider: unknown, ctx: ProviderHookContext) {
       const apiKey = await resolveApiKey(ctx);
       const dynamicModels = apiKey ? await listModelsWithTimeout(apiKey, log) : null;
       const sourceModels = dynamicModels ?? STATIC_FALLBACK_MODELS;
 
       const result: Record<string, any> = {};
-      for (const model of sourceModels as Array<{ id: string; name?: string; contextWindow?: number }>) {
+      for (const model of sourceModels) {
         const meta = makeModelMeta({
           id: model.id,
           name: model.name ?? model.id,
@@ -56,22 +56,31 @@ export function createProviderHook(deps: {
 
         result[model.id] = {
           ...meta,
-          async doStream(args: any) {
-            const currentApiKey = await resolveApiKey(ctx);
-            return runDoStream({
-              args,
-              modelId: model.id,
-              apiKey: currentApiKey,
-              log,
-              pool,
-              cwd,
-              warnState: {
-                hasWarned: () => warnedParamsOnce,
-                markWarned: () => {
-                  warnedParamsOnce = true;
+          async doStream(args: { prompt: LanguageModelV2Prompt; abortSignal?: AbortSignal; chatParams?: unknown }) {
+            try {
+              const currentApiKey = await resolveApiKey(ctx);
+              return await runDoStream({
+                args,
+                modelId: model.id,
+                apiKey: currentApiKey,
+                log,
+                pool,
+                cwd,
+                warnState: {
+                  hasWarned: () => warnedParamsOnce,
+                  markWarned: () => {
+                    warnedParamsOnce = true;
+                  },
                 },
-              },
-            });
+              });
+            } catch (err) {
+              const message = err instanceof Error ? err.message : String(err);
+              log.error("cursor-provider: doStream threw an error", { message });
+              
+              // Instead of returning a stream with an error object, which might crash opencode core if it expects a specific format,
+              // we throw a standard Error object so that the Provider framework handles the rejection natively.
+              throw new Error(`Cursor Provider Error: ${message}`);
+            }
           },
         };
       }
@@ -82,7 +91,7 @@ export function createProviderHook(deps: {
 }
 
 async function runDoStream(opts: {
-  args: { prompt: any; abortSignal?: AbortSignal; chatParams?: any };
+  args: { prompt: LanguageModelV2Prompt; abortSignal?: AbortSignal; chatParams?: unknown };
   modelId: string;
   apiKey: string | undefined;
   log: Logger;
@@ -96,10 +105,10 @@ async function runDoStream(opts: {
     throw new Error("Cursor API key is not set; run 'opencode auth login cursor' or export CURSOR_API_KEY");
   }
 
-  if (!warnState.hasWarned() && args.chatParams && Object.keys(args.chatParams).length > 0) {
+  if (!warnState.hasWarned() && args.chatParams && Object.keys(args.chatParams as Record<string, unknown>).length > 0) {
     warnState.markWarned();
     log.warn("cursor-provider: chat.params not supported by Cursor SDK; ignored", {
-      paramKeys: Object.keys(args.chatParams),
+      paramKeys: Object.keys(args.chatParams as Record<string, unknown>),
     });
   }
 
@@ -164,10 +173,11 @@ async function runDoStream(opts: {
   return { stream };
 }
 
-async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log: Logger; cwd: string }) {
+async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log: Logger; cwd: string }): Promise<SDKAgent> {
+  const { Agent } = await import("@cursor/sdk");
   const { apiKey, modelId, log, cwd } = deps;
   try {
-    return await Agent.create({ apiKey, model: { id: modelId }, local: { cwd } });
+    return await Agent.create({ apiKey, model: { id: modelId }, local: { cwd } }) as SDKAgent;
   } catch (err) {
     log.error("cursor-provider: Agent.create failed", {
       modelId,

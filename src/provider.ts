@@ -57,21 +57,33 @@ export function createProviderHook(deps: {
         result[model.id] = {
           ...meta,
           async doStream(args: any) {
-            const currentApiKey = await resolveApiKey(ctx);
-            return runDoStream({
-              args,
-              modelId: model.id,
-              apiKey: currentApiKey,
-              log,
-              pool,
-              cwd,
-              warnState: {
-                hasWarned: () => warnedParamsOnce,
-                markWarned: () => {
-                  warnedParamsOnce = true;
+            try {
+              const currentApiKey = await resolveApiKey(ctx);
+              return await runDoStream({
+                args,
+                modelId: model.id,
+                apiKey: currentApiKey,
+                log,
+                pool,
+                cwd,
+                warnState: {
+                  hasWarned: () => warnedParamsOnce,
+                  markWarned: () => {
+                    warnedParamsOnce = true;
+                  },
                 },
-              },
-            });
+              });
+            } catch (err) {
+              const message = err instanceof Error ? err.message : String(err);
+              log.error("cursor-provider: doStream threw an error", { message });
+              const stream = new ReadableStream({
+                start(controller) {
+                  controller.enqueue({ type: "error", error: { message } });
+                  controller.close();
+                },
+              });
+              return { stream };
+            }
           },
         };
       }

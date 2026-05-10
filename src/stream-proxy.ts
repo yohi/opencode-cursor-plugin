@@ -26,7 +26,7 @@ export type StreamErrorType =
   | "Error";
 
 export function createStream(input: StreamProxyInput): {
-  stream: ReadableStream<any>;
+  stream: ReadableStream<unknown>;
   done: Promise<{ finishReason: StreamFinishReason; errorType?: StreamErrorType }>;
 } {
   const { agent: initialAgent, message, log, abortSignal, recreateAgent } = input;
@@ -35,7 +35,7 @@ export function createStream(input: StreamProxyInput): {
   let hasEmittedDelta = false;
   let finishReason: StreamFinishReason | null = null;
   let lastErrorType: StreamErrorType | undefined;
-  let controller!: ReadableStreamDefaultController<any>;
+  let controller!: ReadableStreamDefaultController<unknown>;
   const warnedToolCallIds = new Set<string>();
   const internalAbort = new AbortController();
   const onExternalAbort = () => internalAbort.abort();
@@ -54,7 +54,7 @@ export function createStream(input: StreamProxyInput): {
     lastErrorType = (name || "Error") as StreamErrorType;
   };
 
-  const safeEnqueue = (part: any) => {
+  const safeEnqueue = (part: { type: string; [key: string]: unknown }) => {
     if (hasClosedStream) {
       log.debug("stream-proxy: enqueue after close ignored", { partType: part.type });
       return;
@@ -64,7 +64,7 @@ export function createStream(input: StreamProxyInput): {
       hasEmittedDelta = true;
     }
     if (part.type === "finish") {
-      setFinishReason(part.finishReason);
+      setFinishReason(part.finishReason as StreamFinishReason);
     }
     if (part.type === "error") {
       setFinishReason("error");
@@ -79,7 +79,7 @@ export function createStream(input: StreamProxyInput): {
     controller.close();
   };
 
-  const onDelta = (update: any) => {
+  const onDelta = ({ update }: any) => {
     switch (update.type) {
       case "text-delta":
         safeEnqueue({ type: "text-delta", text: update.text });
@@ -88,14 +88,14 @@ export function createStream(input: StreamProxyInput): {
         safeEnqueue({ type: "reasoning-delta", text: update.text });
         break;
       case "tool-call-started": {
-        const id = update.toolCallId ?? update.toolName;
+        const id = (update.toolCallId as string) ?? (update.toolName as string);
         if (warnedToolCallIds.has(id)) break;
         warnedToolCallIds.add(id);
         log.warn("cursor: unexpected tool-call in Pure LLM mode", {
           toolName: update.toolName,
           toolCallId: update.toolCallId,
         });
-        safeEnqueue({ type: "text-delta", text: toolWarning(update.toolName ?? "unknown") });
+        safeEnqueue({ type: "text-delta", text: toolWarning((update.toolName as string) ?? "unknown") });
         break;
       }
       case "tool-call-partial":
@@ -103,7 +103,7 @@ export function createStream(input: StreamProxyInput): {
         log.debug("stream-proxy: drop tool-call detail", { type: update.type });
         break;
       case "turn-ended":
-        safeEnqueue({ type: "finish", finishReason: "stop" });
+        safeEnqueue({ type: "finish", finish_reason: "stop" });
         safeClose();
         break;
       default:
@@ -134,7 +134,7 @@ export function createStream(input: StreamProxyInput): {
     resolveDone = resolve;
   });
 
-  const stream = new ReadableStream<any>({
+  const stream = new ReadableStream<unknown>({
     start(createdController) {
       controller = createdController;
       const onAbort = () => {

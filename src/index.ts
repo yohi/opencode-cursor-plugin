@@ -1,12 +1,12 @@
-import type { Plugin } from "@opencode-ai/plugin";
+import type { Plugin, ProviderHookContext } from "@opencode-ai/plugin";
 import { config as loadDotenv } from "dotenv";
 import { resolveApiKey, cursorAuthHook, getOrRefreshToken, getTokenExpiry, resolveAndPersistApiKey } from "./auth.js";
 import { createAgentPool } from "./agent-pool.js";
 import { ensureCursorProviderConfig } from "./config.js";
-import { createLogger } from "./logger.js";
+import { createLogger, type RawLogFn, type RawLogMethods } from "./logger.js";
 import { startOpenAiProxy } from "./openai-proxy.js";
 import { createProviderHook } from "./provider.js";
-import { STATIC_FALLBACK_MODELS, makeModelMeta } from "./models.js";
+import { STATIC_FALLBACK_MODELS, makeModelMeta, type ModelMeta } from "./models.js";
 
 const POOL_CAPACITY = 8;
 const CLOSEALL_TIMEOUT_MS = 5_000;
@@ -16,10 +16,10 @@ const CLOSEALL_TIMEOUT_MS = 5_000;
  */
 interface ExtendedClient {
   app: {
-    log: any; // Raw log methods
+    log: RawLogMethods | RawLogFn;
     cwd?: string;
   };
-  auth?: any;
+  auth?: NonNullable<ProviderHookContext["auth"]>;
 }
 
 const CursorProviderPlugin: Plugin = async ({ client: rawClient }) => {
@@ -97,7 +97,7 @@ const CursorProviderPlugin: Plugin = async ({ client: rawClient }) => {
 
       if (config.provider?.cursor) {
         const sourceModels = (dynamicModels && dynamicModels.length > 0) ? dynamicModels : STATIC_FALLBACK_MODELS;
-        const modelsObj: Record<string, any> = {};
+        const modelsObj: Record<string, ModelMeta> = {};
         for (const m of sourceModels) {
           modelsObj[m.id] = makeModelMeta(m);
         }

@@ -13,13 +13,20 @@ vi.mock("@cursor/sdk", () => ({
   Agent: {
     create: vi.fn(),
   },
+  AuthenticationError: class extends Error {},
+  ConfigurationError: class extends Error {},
+  RateLimitError: class extends Error {},
+  NetworkError: class extends Error { isRetryable = true; },
+  IntegrationNotConnectedError: class extends Error {},
+  UnknownAgentError: class extends Error {},
+  CursorSdkError: class extends Error {},
 }));
 
 const log = createLogger({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() });
 
 async function makeHookHelper(resolveApiKey = async () => "test-key") {
   const pool = createAgentPool({ log, capacity: 8 });
-  const hook = createProviderHook({ resolveApiKey, log, pool, cwd: "/test/cwd" });
+  const hook = createProviderHook({ resolveApiKey, log, pool });
   const ctx = {} as any;
   return { sdk, hook, ctx, pool };
 }
@@ -100,7 +107,6 @@ describe("createProviderHook.models()", () => {
       resolveApiKey,
       log,
       pool: createAgentPool({ log, capacity: 8 }),
-      cwd: "/test/cwd",
     });
 
     // 1回目の models() 呼び出しで生成された doStream は ctx1 を閉じ込める
@@ -112,9 +118,28 @@ describe("createProviderHook.models()", () => {
     // 2回目の models() 呼び出し (ctx2)
     const ctx2 = { id: 2 } as any;
     resolveApiKey.mockResolvedValueOnce("key-2");
-    await hook.models?.("cursor" as any, ctx2);
+    const models2 = await hook.models?.("cursor" as any, ctx2);
+    const doStream2 = models2?.["composer-2"].doStream;
 
-    expect(doStream1).toBeDefined();
+    expect(doStream1).not.toBe(doStream2);
+
+    // doStream1 を実行。内部で resolveApiKey(ctx1) が呼ばれるはず
+    vi.mocked(sdk.Agent.create).mockResolvedValue({
+      send: vi.fn().mockResolvedValue({
+        wait: async () => ({ status: "finished" }),
+      }),
+      [Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+    } as any);
+
+    resolveApiKey.mockResolvedValueOnce("key-1");
+    const streamResult = await doStream1({ prompt: [{ role: "user", content: "hi" }] } as any);
+    await streamResult?.stream.getReader().read();
+
+    // models1 から生成された doStream なので ctx1 を使うべき
+    expect(resolveApiKey).toHaveBeenCalledWith(ctx1);
+    expect(sdk.Agent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ apiKey: "key-1" }),
+    );
   });
 
   it("listModelsWithTimeout が完了したときに clearTimeout が呼ばれる", async () => {

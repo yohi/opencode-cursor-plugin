@@ -97,8 +97,9 @@ export function makeModelMeta(model: FallbackModel): ModelMeta {
     capabilities: {
       temperature: true,
       reasoning: model.capabilities?.reasoning ?? false,
-      attachment: false,
-      toolcall: false,
+      attachment: model.capabilities?.attachment ?? false,
+      toolcall: model.capabilities?.toolcall ?? false,
+      interleaved: model.capabilities?.interleaved ?? false,
       input: {
         text: true,
         audio: false,
@@ -115,8 +116,6 @@ export function makeModelMeta(model: FallbackModel): ModelMeta {
         pdf: false,
         ...model.capabilities?.output,
       },
-      interleaved: false,
-      ...model.capabilities,
     },
     cost: {
       input: 0,

@@ -29,7 +29,7 @@ const CursorProviderPlugin: Plugin = async (input) => {
     loadDotenv();
   }
 
-  const log = createLogger(client.app.log);
+  const log = createLogger(typeof client.app.log === "function" ? (client.app.log as Function).bind(client.app) : client.app.log);
   const pool = createAgentPool({ log, capacity: POOL_CAPACITY });
   const cwd = client.app.cwd || process.cwd();
   const proxy = await startOpenAiProxy(log, pool, cwd);

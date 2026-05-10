@@ -106,15 +106,23 @@ describe("createProviderHook.models()", () => {
   });
 
   it("list 10s タイムアウトでフォールバック", async () => {
-    vi.useFakeTimers();
     const { sdk, hook, ctx } = await makeHookHelper();
     vi.mocked(sdk.Cursor.models.list).mockImplementation(() => new Promise(() => {}));
 
-    const resultPromise = hook.models?.("cursor" as any, ctx);
-    await vi.advanceTimersByTimeAsync(10_000);
+    const originalSetTimeout = global.setTimeout;
+    vi.spyOn(global, "setTimeout").mockImplementation((cb: any, ms?: number) => {
+      if (ms === 10_000) {
+        process.nextTick(cb);
+      }
+      return 0 as any;
+    });
 
-    const result = await resultPromise;
-    expect(result && "composer-2" in result).toBe(true);
+    try {
+      const result = await hook.models?.("cursor" as any, ctx);
+      expect(result && "composer-2" in result).toBe(true);
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 
   it("doStream は生成時の ctx を隔離して保持する", async () => {

@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.3.8](https://github.com/yohi/opencode-cursor-plugin/compare/v1.3.7...v1.3.8) (2026-05-10)
+
+
+### Bug Fixes
+
+* **@cursor/sdk:** @cursor/sdk を v1.0.12 にアップデート ([c2ebb02](https://github.com/yohi/opencode-cursor-plugin/commit/c2ebb02647feb70c75192041224ad3cced976935))
+* **errors:** robust error name detection and RateLimit phase guard ([643f85a](https://github.com/yohi/opencode-cursor-plugin/commit/643f85aaf6699ed390fba9acb9db7c5ff74808a6))
+* エラーハンドリングと型安全性を強化し、SDK連携を堅牢化 ([1bd0b2c](https://github.com/yohi/opencode-cursor-plugin/commit/1bd0b2c593a20c639741cc38831732d41cb06053))
+
 ## [1.3.7](https://github.com/yohi/opencode-cursor-plugin/compare/v1.3.6...v1.3.7) (2026-05-10)
 
 

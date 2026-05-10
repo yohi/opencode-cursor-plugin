@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.6](https://github.com/yohi/opencode-cursor-plugin/compare/v1.3.5...v1.3.6) (2026-05-10)
+
+
+### Bug Fixes
+
+* bind client.app.log to avoid this._client crash on logging ([5460680](https://github.com/yohi/opencode-cursor-plugin/commit/5460680406857252a6954549c14a722e841a1a69))
+* pin @cursor/sdk to 1.0.10 to prevent sqlite3 segfault in Bun ([a877f4c](https://github.com/yohi/opencode-cursor-plugin/commit/a877f4c1804822b7935c6d7d7a8f01f3e577cf5b))
+
 ## [1.3.5](https://github.com/yohi/opencode-cursor-plugin/compare/v1.3.4...v1.3.5) (2026-05-10)
 
 

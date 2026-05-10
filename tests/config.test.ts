@@ -85,3 +85,43 @@ describe("ensureCursorProviderConfig", () => {
     expect(config.provider.cursor.options.baseURL).toBe("http://127.0.0.1:32125/v1");
   });
 });
+
+describe("CursorProviderPlugin auth resolution", () => {
+  it("auth.authenticate が成功した場合に認証情報を取得できる", async () => {
+    const authenticate = vi.fn().mockResolvedValue({ type: "api", key: "test-key" });
+    const plugin = await CursorProviderPlugin({
+      client: { 
+        app: { log: { info() {}, warn() {}, error() {}, debug() {} } },
+        auth: { authenticate }
+      },
+    } as any);
+    
+    // provider.models() は内部で resolveApiKey を呼び出す
+    await plugin.provider?.models?.({} as any, { auth: { authenticate } } as any);
+    
+    expect(authenticate).toHaveBeenCalledWith({ id: "cursor" });
+  });
+
+  it("auth.authenticate がタイムアウトした場合に警告ログを出力しフォールバックする", async () => {
+    vi.useFakeTimers();
+    const warn = vi.fn();
+    const authenticate = vi.fn().mockReturnValue(new Promise(() => {})); // 解決しない
+    const plugin = await CursorProviderPlugin({
+      client: { 
+        app: { log: { info() {}, warn, error() {}, debug() {} } },
+        auth: { authenticate }
+      },
+    } as any);
+    
+    const modelsPromise = plugin.provider?.models?.({} as any, { auth: { authenticate } } as any);
+    
+    // タイムアウト（2000ms）を待機
+    await vi.advanceTimersByTimeAsync(2100);
+    await modelsPromise;
+    
+    expect(authenticate).toHaveBeenCalledWith({ id: "cursor" });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("auth.authenticate failed or timed out"), expect.anything());
+    
+    vi.useRealTimers();
+  });
+});

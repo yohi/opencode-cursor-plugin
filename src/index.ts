@@ -1,6 +1,6 @@
 import type { Plugin, ProviderHookContext, Config } from "@opencode-ai/plugin";
 import { config as loadDotenv } from "dotenv";
-import { resolveApiKey, cursorAuthHook, resolveAndPersistApiKey } from "./auth.js";
+import { resolveApiKey, cursorAuthHook } from "./auth.js";
 import { createAgentPool } from "./agent-pool.js";
 import { ensureCursorProviderConfig } from "./config.js";
 import { createLogger } from "./logger.js";

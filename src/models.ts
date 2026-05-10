@@ -1,23 +1,37 @@
+/**
+ * ISO 8601 date string in YYYY-MM-DD format.
+ */
+export type ISODateString = `${number}-${number}-${number}`;
+
 export interface FallbackModel {
   id: string;
   name: string;
   contextWindow: number;
   status?: string;
-  releaseDate?: string;
+  releaseDate?: ISODateString;
   capabilities?: Partial<ModelMeta["capabilities"]>;
 }
 
 export const DEFAULT_MODEL_ID = "composer-2";
 
+const CLAUDE_CAPABILITIES = {
+  input: { text: true, audio: false, image: true, video: false, pdf: true },
+};
+
+const CLAUDE_REASONING_CAPABILITIES = {
+  reasoning: true,
+  input: { text: true, audio: false, image: true, video: false, pdf: true },
+};
+
 export const STATIC_FALLBACK_MODELS: ReadonlyArray<FallbackModel> = [
   { id: "composer-2", name: "Composer 2", contextWindow: 200_000, releaseDate: "2026-03-15", capabilities: { reasoning: true } },
-  { id: "claude-sonnet-4-6", name: "Claude 4.6 Sonnet", contextWindow: 200_000, releaseDate: "2026-01-20", capabilities: { input: { text: true, audio: false, image: true, video: false, pdf: true } } },
-  { id: "claude-opus-4-7", name: "Claude 4.7 Opus", contextWindow: 200_000, releaseDate: "2026-04-10", capabilities: { reasoning: true, input: { text: true, audio: false, image: true, video: false, pdf: true } } },
-  { id: "claude-haiku-4-5", name: "Claude 4.5 Haiku", contextWindow: 200_000, releaseDate: "2025-11-01" },
-  { id: "claude-sonnet-4-5", name: "Claude 4.5 Sonnet", contextWindow: 200_000, releaseDate: "2025-10-15" },
-  { id: "claude-sonnet-4", name: "Claude 4 Sonnet", contextWindow: 200_000, releaseDate: "2025-06-20" },
-  { id: "claude-opus-4-6", name: "Claude 4.6 Opus", contextWindow: 200_000, releaseDate: "2026-01-20" },
-  { id: "claude-opus-4-5", name: "Claude 4.5 Opus", contextWindow: 200_000, releaseDate: "2025-10-15" },
+  { id: "claude-sonnet-4-6", name: "Claude 4.6 Sonnet", contextWindow: 200_000, releaseDate: "2026-01-20", capabilities: CLAUDE_CAPABILITIES },
+  { id: "claude-opus-4-7", name: "Claude 4.7 Opus", contextWindow: 200_000, releaseDate: "2026-04-10", capabilities: CLAUDE_REASONING_CAPABILITIES },
+  { id: "claude-haiku-4-5", name: "Claude 4.5 Haiku", contextWindow: 200_000, releaseDate: "2025-11-01", capabilities: CLAUDE_CAPABILITIES },
+  { id: "claude-sonnet-4-5", name: "Claude 4.5 Sonnet", contextWindow: 200_000, releaseDate: "2025-10-15", capabilities: CLAUDE_CAPABILITIES },
+  { id: "claude-sonnet-4", name: "Claude 4 Sonnet", contextWindow: 200_000, releaseDate: "2025-06-20", capabilities: CLAUDE_CAPABILITIES },
+  { id: "claude-opus-4-6", name: "Claude 4.6 Opus", contextWindow: 200_000, releaseDate: "2026-01-20", capabilities: CLAUDE_CAPABILITIES },
+  { id: "claude-opus-4-5", name: "Claude 4.5 Opus", contextWindow: 200_000, releaseDate: "2025-10-15", capabilities: CLAUDE_CAPABILITIES },
   { id: "gpt-5.5", name: "GPT-5.5", contextWindow: 128_000, releaseDate: "2026-05-01", capabilities: { reasoning: true } },
   { id: "gpt-5.4", name: "GPT-5.4", contextWindow: 128_000, releaseDate: "2026-03-01" },
   { id: "gpt-5.4-mini", name: "GPT-5.4 Mini", contextWindow: 128_000, releaseDate: "2026-03-01" },
@@ -83,7 +97,7 @@ export interface ModelMeta {
   status?: "alpha" | "beta" | "deprecated";
   options: Record<string, unknown>;
   headers: Record<string, string>;
-  release_date: string;
+  release_date: ISODateString;
 }
 
 export function makeModelMeta(model: FallbackModel): ModelMeta {

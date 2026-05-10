@@ -57,7 +57,7 @@ export function createProviderHook(deps: {
           ...meta,
           async doStream(args: { prompt: LanguageModelV2Prompt; abortSignal?: AbortSignal; chatParams?: unknown }) {
             try {
-              const currentApiKey = await resolveApiKey(ctx);
+              const currentApiKey = await resolveApiKey(ctx, log);
               return await runDoStream({
                 args,
                 modelId: model.id,

@@ -36,8 +36,8 @@ async function collect(stream: ReadableStream<any>): Promise<any[]> {
 describe("stream-proxy", () => {
   it("TextDeltaUpdate → text-delta", async () => {
     const agent = fakeAgent(async (onDelta) => {
-      onDelta({ type: "text-delta", text: "hello" });
-      onDelta({ type: "turn-ended" });
+      onDelta({ update: { type: "text-delta", text: "hello" } });
+      onDelta({ update: { type: "turn-ended" } });
       return { status: "finished" };
     });
 
@@ -50,8 +50,8 @@ describe("stream-proxy", () => {
 
   it("ThinkingDeltaUpdate → reasoning-delta", async () => {
     const agent = fakeAgent(async (onDelta) => {
-      onDelta({ type: "thinking-delta", text: "reasoning..." });
-      onDelta({ type: "turn-ended" });
+      onDelta({ update: { type: "thinking-delta", text: "reasoning..." } });
+      onDelta({ update: { type: "turn-ended" } });
       return { status: "finished" };
     });
 
@@ -63,9 +63,9 @@ describe("stream-proxy", () => {
 
   it("ToolCallStartedUpdate → 警告 text-delta は同 toolCallId で 1 回のみ", async () => {
     const agent = fakeAgent(async (onDelta) => {
-      onDelta({ type: "tool-call-started", toolCallId: "t1", toolName: "shell" });
-      onDelta({ type: "tool-call-started", toolCallId: "t1", toolName: "shell" });
-      onDelta({ type: "turn-ended" });
+      onDelta({ update: { type: "tool-call-started", toolCallId: "t1", toolName: "shell" } });
+      onDelta({ update: { type: "tool-call-started", toolCallId: "t1", toolName: "shell" } });
+      onDelta({ update: { type: "turn-ended" } });
       return { status: "finished" };
     });
 
@@ -78,9 +78,9 @@ describe("stream-proxy", () => {
 
   it("PartialToolCallUpdate / ToolCallCompletedUpdate はドロップ", async () => {
     const agent = fakeAgent(async (onDelta) => {
-      onDelta({ type: "tool-call-partial", arguments: '{"foo":' });
-      onDelta({ type: "tool-call-completed", toolCallId: "t1" });
-      onDelta({ type: "turn-ended" });
+      onDelta({ update: { type: "tool-call-partial", arguments: '{"foo":' } });
+      onDelta({ update: { type: "tool-call-completed", toolCallId: "t1" } });
+      onDelta({ update: { type: "turn-ended" } });
       return { status: "finished" };
     });
 
@@ -101,7 +101,7 @@ describe("stream-proxy", () => {
   it("AbortSignal でストリームがクローズされる", async () => {
     const controller = new AbortController();
     const agent = fakeAgent(async (onDelta) => {
-      onDelta({ type: "text-delta", text: "x" });
+      onDelta({ update: { type: "text-delta", text: "x" } });
       controller.abort();
       await new Promise((resolve) => setTimeout(resolve, 10));
       return { status: "cancelled" };
@@ -129,7 +129,7 @@ describe("stream-proxy", () => {
 
   it("TurnEnded 後の status=finished で重複 close されない (hasClosedStream ガード)", async () => {
     const agent = fakeAgent(async (onDelta) => {
-      onDelta({ type: "turn-ended" });
+      onDelta({ update: { type: "turn-ended" } });
       return { status: "finished" };
     });
 
@@ -171,7 +171,7 @@ describe("stream-proxy", () => {
     const err = new NetworkError("flap");
     Object.assign(err, { isRetryable: true });
     const agent = fakeAgent(async (onDelta) => {
-      onDelta({ type: "text-delta", text: "first chunk" });
+      onDelta({ update: { type: "text-delta", text: "first chunk" } });
       throw err;
     });
 
@@ -185,8 +185,8 @@ describe("stream-proxy", () => {
   it("未知イベント型は debug ログのみで enqueue しない", async () => {
     const localLog = createLogger({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() });
     const agent = fakeAgent(async (onDelta) => {
-      onDelta({ type: "unknown-future-event" });
-      onDelta({ type: "turn-ended" });
+      onDelta({ update: { type: "unknown-future-event" } });
+      onDelta({ update: { type: "turn-ended" } });
       return { status: "finished" };
     });
 
@@ -223,8 +223,8 @@ describe("stream-proxy", () => {
     const err = new UnknownAgentError("agent gone");
     const oldAgent = { send: vi.fn(async () => { throw err; }), close: vi.fn() } as any;
     const newAgent = fakeAgent(async (onDelta) => {
-      onDelta({ type: "text-delta", text: "from-new" });
-      onDelta({ type: "turn-ended" });
+      onDelta({ update: { type: "text-delta", text: "from-new" } });
+      onDelta({ update: { type: "turn-ended" } });
       return { status: "finished" };
     });
     const recreateAgent = vi.fn(async () => ({ agent: newAgent, message: "full-prompt" }));
@@ -281,8 +281,8 @@ describe("stream-proxy", () => {
     const oldAgent = { send: vi.fn(async () => { throw err; }), close: vi.fn() } as any;
     const controller = new AbortController();
     const newAgent = fakeAgent(async (onDelta) => {
-      onDelta({ type: "text-delta", text: "should-not-appear" });
-      onDelta({ type: "turn-ended" });
+      onDelta({ update: { type: "text-delta", text: "should-not-appear" } });
+      onDelta({ update: { type: "turn-ended" } });
       return { status: "finished" };
     });
     const recreateAgent = vi.fn(async () => {

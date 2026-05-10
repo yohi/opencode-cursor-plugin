@@ -20,18 +20,18 @@ export async function resolveAndPersistApiKey(deps: {
   try {
     // Note: auth.get/set are methods of the Auth class from @opencode-ai/sdk.
     // They must be called with the correct 'this' context.
-    const hasGet = (obj: unknown): obj is { get: Function } => 
-      !!obj && typeof obj === "object" && "get" in obj && typeof (obj as any).get === "function";
-    const hasSet = (obj: unknown): obj is { set: Function } => 
-      !!obj && typeof obj === "object" && "set" in obj && typeof (obj as any).set === "function";
+    const hasGet = (obj: unknown): obj is { get: (...args: unknown[]) => unknown } => 
+      typeof obj === "object" && obj !== null && "get" in obj && typeof (obj as Record<string, unknown>).get === "function";
+    const hasSet = (obj: unknown): obj is { set: (...args: unknown[]) => unknown } => 
+      typeof obj === "object" && obj !== null && "set" in obj && typeof (obj as Record<string, unknown>).set === "function";
 
     const savedAuth = hasGet(auth) 
-      ? await auth.get.call(auth, { path: { id: "cursor" } }).catch(() => undefined) 
+      ? await (auth as { get: (...args: unknown[]) => Promise<unknown> }).get.call(auth, { path: { id: "cursor" } }).catch(() => undefined) 
       : undefined;
     
-    const result = await getOrRefreshToken(auth, async (tokens) => {
+    const result = await getOrRefreshToken(savedAuth || auth, async (tokens) => {
       if (hasSet(auth)) {
-        await auth.set.call(auth, {
+        await (auth as { set: (...args: unknown[]) => Promise<void> }).set.call(auth, {
           path: { id: "cursor" },
           body: {
             type: "oauth",
@@ -75,8 +75,8 @@ export async function getOrRefreshToken(
 ): Promise<{ apiKey: string } | undefined> {
   if (!auth || typeof auth !== "object") return undefined;
 
-  const isAuthWithData = (obj: any): obj is { type: string; key?: string; access?: string; refresh?: string; expires?: number } => 
-    typeof obj.type === "string";
+  const isAuthWithData = (obj: unknown): obj is { type: string; key?: string; access?: string; refresh?: string; expires?: number } => 
+    typeof obj === "object" && obj !== null && "type" in obj && typeof (obj as Record<string, unknown>).type === "string";
 
   if (!isAuthWithData(auth)) return undefined;
 

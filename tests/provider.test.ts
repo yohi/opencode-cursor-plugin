@@ -124,7 +124,7 @@ describe("createProviderHook.models()", () => {
     ]);
     vi.mocked(sdk.Agent.create).mockResolvedValue({
       send: vi.fn(async (_message: string, opts: any) => {
-        opts.onDelta({ type: "turn-ended" });
+        opts.onDelta({ update: { type: "turn-ended" } });
         return { wait: async () => ({ status: "finished" }) };
       }),
       close: vi.fn(),

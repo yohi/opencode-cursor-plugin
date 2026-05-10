@@ -15,7 +15,7 @@ async function listModelsWithTimeout(apiKey: string, log: Logger): Promise<Fallb
   let timeoutId: NodeJS.Timeout | undefined;
   try {
     return await Promise.race([
-      Cursor.models.list({ apiKey }) as any as Promise<FallbackModel[]>,
+      Cursor.models.list({ apiKey }) as unknown as Promise<FallbackModel[]>,
       new Promise<never>((_, reject) => {
         timeoutId = setTimeout(() => reject(new Error("models.list timeout")), MODELS_LIST_TIMEOUT_MS);
       }),

@@ -79,23 +79,23 @@ export function createStream(input: StreamProxyInput): {
     controller.close();
   };
 
-  const onDelta = ({ update }: any) => {
+  const onDelta = ({ update }: { update: { type: string; text?: string; toolCallId?: string; toolName?: string } }) => {
     switch (update.type) {
       case "text-delta":
-        safeEnqueue({ type: "text-delta", text: update.text });
+        safeEnqueue({ type: "text-delta", text: update.text ?? "" });
         break;
       case "thinking-delta":
-        safeEnqueue({ type: "reasoning-delta", text: update.text });
+        safeEnqueue({ type: "reasoning-delta", text: update.text ?? "" });
         break;
       case "tool-call-started": {
-        const id = (update.toolCallId as string) ?? (update.toolName as string);
+        const id = (update.toolCallId as string | undefined) ?? (update.toolName as string | undefined) ?? "unknown";
         if (warnedToolCallIds.has(id)) break;
         warnedToolCallIds.add(id);
         log.warn("cursor: unexpected tool-call in Pure LLM mode", {
           toolName: update.toolName,
           toolCallId: update.toolCallId,
         });
-        safeEnqueue({ type: "text-delta", text: toolWarning((update.toolName as string) ?? "unknown") });
+        safeEnqueue({ type: "text-delta", text: toolWarning((update.toolName as string | undefined) ?? "unknown") });
         break;
       }
       case "tool-call-partial":
@@ -103,7 +103,7 @@ export function createStream(input: StreamProxyInput): {
         log.debug("stream-proxy: drop tool-call detail", { type: update.type });
         break;
       case "turn-ended":
-        safeEnqueue({ type: "finish", finish_reason: "stop" });
+        safeEnqueue({ type: "finish", finishReason: "stop" });
         safeClose();
         break;
       default:

@@ -10,24 +10,28 @@ const CURSOR_REQUEST_TIMEOUT = 30000;
 const CURSOR_POLL_REQUEST_TIMEOUT = 5000;
 
 export async function resolveAndPersistApiKey(deps: { 
-  auth: ProviderHookContext["auth"]; 
+  auth: unknown; 
   log?: Logger 
 }): Promise<string | undefined> {
   const { auth, log } = deps;
   const normalizedEnv = process.env.CURSOR_API_KEY?.trim() || undefined;
-  if (!auth) return normalizedEnv;
+  if (!auth || typeof auth !== "object") return normalizedEnv;
 
   try {
     // Note: auth.get/set are methods of the Auth class from @opencode-ai/sdk.
     // They must be called with the correct 'this' context.
-    const authObj = auth as any;
-    const savedAuth = typeof authObj.get === "function" 
-      ? await authObj.get.call(auth, { path: { id: "cursor" } }).catch(() => undefined) 
+    const hasGet = (obj: unknown): obj is { get: Function } => 
+      !!obj && typeof obj === "object" && "get" in obj && typeof (obj as any).get === "function";
+    const hasSet = (obj: unknown): obj is { set: Function } => 
+      !!obj && typeof obj === "object" && "set" in obj && typeof (obj as any).set === "function";
+
+    const savedAuth = hasGet(auth) 
+      ? await auth.get.call(auth, { path: { id: "cursor" } }).catch(() => undefined) 
       : undefined;
     
     const result = await getOrRefreshToken(auth, async (tokens) => {
-      if (typeof authObj.set === "function") {
-        await authObj.set.call(auth, {
+      if (hasSet(auth)) {
+        await auth.set.call(auth, {
           path: { id: "cursor" },
           body: {
             type: "oauth",
@@ -35,7 +39,7 @@ export async function resolveAndPersistApiKey(deps: {
             refresh: tokens.refreshToken,
             expires: getTokenExpiry(tokens.accessToken),
           },
-        }).catch((err: any) => {
+        }).catch((err: unknown) => {
           if (log) {
             log.warn("cursor-provider: failed to persist refreshed token", {
               error: err instanceof Error ? err.message : String(err),
@@ -66,22 +70,28 @@ export async function resolveApiKey(ctx: ProviderHookContext, log?: Logger): Pro
 }
 
 export async function getOrRefreshToken(
-  auth: ProviderHookContext["auth"],
+  auth: unknown,
   onRefresh?: (tokens: { accessToken: string; refreshToken: string }) => Promise<void>,
 ): Promise<{ apiKey: string } | undefined> {
-  if (!auth) return undefined;
+  if (!auth || typeof auth !== "object") return undefined;
 
-  const authObj = auth as any;
-  if (authObj.type === "api") {
-    const key = typeof authObj.key === "string" ? authObj.key.trim() : "";
+  const isAuthWithData = (obj: any): obj is { type: string; key?: string; access?: string; refresh?: string; expires?: number } => 
+    typeof obj.type === "string";
+
+  if (!isAuthWithData(auth)) return undefined;
+
+  if (auth.type === "api") {
+    const key = typeof auth.key === "string" ? auth.key.trim() : "";
     return key ? { apiKey: key } : undefined;
   }
 
-  if (authObj.type === "oauth") {
+  if (auth.type === "oauth") {
     // 期限切れチェック
-    if (authObj.expires && authObj.expires < Date.now()) {
+    const expires = typeof auth.expires === "number" ? auth.expires : undefined;
+    if (expires && expires < Date.now()) {
       try {
-        const refreshed = await refreshCursorToken(authObj.refresh);
+        const refresh = typeof auth.refresh === "string" ? auth.refresh : "";
+        const refreshed = await refreshCursorToken(refresh);
         if (onRefresh) {
           await onRefresh(refreshed);
         }
@@ -91,7 +101,8 @@ export async function getOrRefreshToken(
         return undefined;
       }
     }
-    return authObj.access ? { apiKey: authObj.access } : undefined;
+    const access = typeof auth.access === "string" ? auth.access : undefined;
+    return access ? { apiKey: access } : undefined;
   }
   return undefined;
 }

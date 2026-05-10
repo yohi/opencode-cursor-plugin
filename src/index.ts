@@ -16,14 +16,14 @@ const CLOSEALL_TIMEOUT_MS = 5_000;
  */
 interface ExtendedClient {
   app: {
-    log: RawLogMethods | RawLogFn;
+    log: Parameters<typeof createLogger>[0];
     cwd?: string;
   };
-  auth?: NonNullable<ProviderHookContext["auth"]>;
+  auth?: unknown;
 }
 
-const CursorProviderPlugin: Plugin = async ({ client: rawClient }) => {
-  const client = rawClient as unknown as ExtendedClient;
+const CursorProviderPlugin: Plugin = async (input) => {
+  const client = input.client as ExtendedClient;
 
   if (process.env.NODE_ENV !== "test") {
     loadDotenv();

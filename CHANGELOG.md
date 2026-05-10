@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.3.5](https://github.com/yohi/opencode-cursor-plugin/compare/v1.3.4...v1.3.5) (2026-05-10)
+
+
+### Bug Fixes
+
+* correct main and exports paths to point to dist/index.js instead of dist/src/index.js ([f4cf95d](https://github.com/yohi/opencode-cursor-plugin/commit/f4cf95d6417f35d2c736030d8d5285abd255c327))
+* **provider:** chat.paramsのチェック条件を簡潔化 ([38ebf36](https://github.com/yohi/opencode-cursor-plugin/commit/38ebf36ef0f6103daa66bb884eaf9b2b1b64d3fd))
+* **provider:** gracefully handle synchronous errors in doStream to prevent core crashes ([331204b](https://github.com/yohi/opencode-cursor-plugin/commit/331204bd337cf05c8a0cdc46e550be3df195a9e1))
+* resolve this._client crash by binding SDK methods and update @cursor/sdk to v1.0.12 ([cf4e16f](https://github.com/yohi/opencode-cursor-plugin/commit/cf4e16f103f9d6da381104c566a5259b5dbdef8b))
+* 認証処理とストリームイベントペイロードの修正 ([b83cb20](https://github.com/yohi/opencode-cursor-plugin/commit/b83cb204ba215bc979bdf88e76293ebade8c932d))
+
 ## [1.3.4](https://github.com/yohi/opencode-cursor-plugin/compare/v1.3.3...v1.3.4) (2026-05-09)
 
 

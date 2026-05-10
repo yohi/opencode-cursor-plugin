@@ -105,7 +105,7 @@ async function runDoStream(opts: {
     throw new Error("Cursor API key is not set; run 'opencode auth login cursor' or export CURSOR_API_KEY");
   }
 
-  if (!warnState.hasWarned() && args.chatParams && (args.chatParams as Record<string, unknown> && Object.keys(args.chatParams as Record<string, unknown>).length > 0)) {
+  if (!warnState.hasWarned() && args.chatParams && Object.keys(args.chatParams as Record<string, unknown>).length > 0) {
     warnState.markWarned();
     log.warn("cursor-provider: chat.params not supported by Cursor SDK; ignored", {
       paramKeys: Object.keys(args.chatParams as Record<string, unknown>),

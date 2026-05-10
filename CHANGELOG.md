@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.0](https://github.com/yohi/opencode-cursor-plugin/compare/v1.3.8...v1.4.0) (2026-05-10)
+
+
+### Features
+
+* 2026年5月時点の最新モデル仕様への対応とドキュメント更新 ([bc633d6](https://github.com/yohi/opencode-cursor-plugin/commit/bc633d61a897a7b810af5c289a505012ac34fdab))
+* **models:** モデルの capability を動的に設定 ([c047917](https://github.com/yohi/opencode-cursor-plugin/commit/c0479176a059b4c3df5d6e35297026351c33d576))
+
 ## [1.3.8](https://github.com/yohi/opencode-cursor-plugin/compare/v1.3.7...v1.3.8) (2026-05-10)
 
 

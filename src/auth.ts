@@ -41,7 +41,6 @@ export async function resolveAndPersistApiKey(deps: { auth: any; log?: Logger })
     if (log && finalKey) {
       log.debug("cursor-provider: resolved API key", {
         source: result?.apiKey ? "saved-auth" : "env",
-        hint: `${finalKey.slice(0, 10)}...${finalKey.slice(-5)}`,
       });
     }
     return finalKey;
@@ -55,8 +54,8 @@ export async function resolveAndPersistApiKey(deps: { auth: any; log?: Logger })
   }
 }
 
-export async function resolveApiKey(ctx: ProviderHookContext): Promise<string | undefined> {
-  return resolveAndPersistApiKey({ auth: (ctx as any).auth });
+export async function resolveApiKey(ctx: ProviderHookContext, log?: Logger): Promise<string | undefined> {
+  return resolveAndPersistApiKey({ auth: (ctx as any).auth, log });
 }
 
 export async function getOrRefreshToken(

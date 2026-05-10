@@ -16,7 +16,7 @@ const CursorProviderPlugin: Plugin = async ({ client }) => {
     loadDotenv();
   }
 
-  const log = createLogger((client.app as any).log.bind(client.app));
+  const log = createLogger((client.app as any).log);
   const pool = createAgentPool({ log, capacity: POOL_CAPACITY });
   const cwd = (client.app as any).cwd || process.cwd();
   const proxy = await startOpenAiProxy(log, pool, cwd);
@@ -52,15 +52,11 @@ const CursorProviderPlugin: Plugin = async ({ client }) => {
   }
 
   const auth = (client as any).auth;
-  const boundAuth = auth ? {
-    get: auth.get ? auth.get.bind(auth) : undefined,
-    set: auth.set ? auth.set.bind(auth) : undefined,
-  } : undefined;
 
   return {
     config: async (config) => {
       // 1. 認証情報を解決
-      const apiKey = await resolveAndPersistApiKey({ auth: boundAuth, log });
+      const apiKey = await resolveAndPersistApiKey({ auth, log });
 
       let dynamicModels: readonly any[] | null = null;
 

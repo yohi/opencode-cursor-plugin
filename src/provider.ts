@@ -1,4 +1,3 @@
-// import { Agent, Cursor } from "@cursor/sdk";
 import type { ProviderHook, ProviderHookContext } from "@opencode-ai/plugin";
 import { disposeAgentSafely } from "./agent-cleanup.js";
 import type { AgentPool } from "./agent-pool.js";

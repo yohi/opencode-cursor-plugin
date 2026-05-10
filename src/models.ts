@@ -38,9 +38,9 @@ export const STATIC_FALLBACK_MODELS: ReadonlyArray<FallbackModel> = [
 
 export interface ModelMeta {
   id: string;
-  providerID: string;
+  providerID: "cursor";
   api: {
-    id: string;
+    id: "cursor";
     url: string;
     npm: string;
   };

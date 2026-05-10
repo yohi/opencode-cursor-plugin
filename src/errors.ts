@@ -1,12 +1,3 @@
-import {
-  AuthenticationError,
-  ConfigurationError,
-  CursorSdkError,
-  IntegrationNotConnectedError,
-  NetworkError,
-  RateLimitError,
-  UnknownAgentError,
-} from "@cursor/sdk";
 import type { Logger } from "./logger.js";
 
 export type RetryPhase = "create" | "pre-stream" | "in-stream" | "post-stream";
@@ -21,9 +12,32 @@ function noRetry(reason: string): RetryDecision {
   return { retry: false, delayMs: 0, reason };
 }
 
+export function getErrorName(err: unknown): string {
+  if (typeof err === "object" && err !== null) {
+    const e = err as {
+      name?: string;
+      code?: string | number;
+      protoErrorCode?: string | number;
+      constructor?: { name?: string };
+    };
 
+    if (e.name && e.name !== "Error") return e.name;
+    if (e.code) return String(e.code);
+    if (e.protoErrorCode) return String(e.protoErrorCode);
+    if (e.constructor?.name && e.constructor.name !== "Object") return e.constructor.name;
+  }
+  return String(err);
+}
+
+/**
+ * Classifies an error to decide whether to retry.
+ * We use property-based checks to avoid static imports from @cursor/sdk,
+ * which can cause crashes in some runtimes (like Bun) during early loading.
+ */
 export function classifyError(err: unknown, ctx: { phase: RetryPhase }): RetryDecision {
-  if (err instanceof NetworkError) {
+  const errorName = getErrorName(err);
+
+  if (errorName === "NetworkError") {
     // We consider any NetworkError retryable in early phases (pre-delivery).
     if (ctx.phase === "create" || ctx.phase === "pre-stream") {
       return { retry: true, delayMs: 500, reason: "NetworkError safe to retry pre-delivery" };
@@ -34,30 +48,25 @@ export function classifyError(err: unknown, ctx: { phase: RetryPhase }): RetryDe
     return noRetry("NetworkError after delivery would duplicate stream");
   }
 
-  if (err instanceof AuthenticationError) return noRetry("AuthenticationError");
-  if (err instanceof ConfigurationError) return noRetry("ConfigurationError");
-  if (err instanceof RateLimitError) {
-    return { retry: true, delayMs: 2000, reason: "RateLimitError with backoff" };
+  if (errorName === "AuthenticationError") return noRetry("AuthenticationError");
+  if (errorName === "ConfigurationError") return noRetry("ConfigurationError");
+  if (errorName === "RateLimitError") {
+    // Mirror the same phase check applied to "NetworkError"
+    if (ctx.phase === "create" || ctx.phase === "pre-stream") {
+      return { retry: true, delayMs: 2000, reason: "RateLimitError with backoff" };
+    }
+    return noRetry("RateLimitError after delivery would duplicate stream");
   }
 
-  if (err instanceof IntegrationNotConnectedError) return noRetry("IntegrationNotConnectedError");
-  if (err instanceof UnknownAgentError) return noRetry("UnknownAgentError handled by caller");
-  if (err instanceof CursorSdkError) return noRetry("CursorSdkError");
+  if (errorName === "IntegrationNotConnectedError") return noRetry("IntegrationNotConnectedError");
+  if (errorName === "UnknownAgentError") return noRetry("UnknownAgentError handled by caller");
+  if (errorName === "CursorSdkError" || errorName.endsWith("SdkError")) return noRetry("CursorSdkError");
 
   return noRetry("unknown");
 }
 
 export function logError(log: Logger, err: unknown, context: Record<string, unknown>): void {
-  const errorType =
-    err instanceof AuthenticationError ? "AuthenticationError"
-      : err instanceof ConfigurationError ? "ConfigurationError"
-        : err instanceof RateLimitError ? "RateLimitError"
-          : err instanceof NetworkError ? "NetworkError"
-            : err instanceof IntegrationNotConnectedError ? "IntegrationNotConnectedError"
-              : err instanceof UnknownAgentError ? "UnknownAgentError"
-                : err instanceof CursorSdkError ? "CursorSdkError"
-                  : err instanceof Error ? err.constructor.name
-                    : typeof err;
+  const errorType = err instanceof Error ? getErrorName(err) : typeof err;
   const messageLength = err instanceof Error ? err.message.length : 0;
 
   const allowedKeys = ["phase", "requestId", "status", "userId", "model"];
@@ -70,5 +79,4 @@ export function logError(log: Logger, err: unknown, context: Record<string, unkn
     errorType,
     messageLength,
   });
-
 }

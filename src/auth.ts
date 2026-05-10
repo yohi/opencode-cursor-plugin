@@ -11,11 +11,16 @@ const CURSOR_POLL_REQUEST_TIMEOUT = 5000;
 
 export async function resolveAndPersistApiKey(deps: { auth: any; log?: Logger }): Promise<string | undefined> {
   const { auth, log } = deps;
+  if (!auth) return process.env.CURSOR_API_KEY;
+
   try {
-    const savedAuth = (auth && typeof auth.get === "function") ? await auth.get("cursor").catch(() => undefined) : undefined;
+    const savedAuth = typeof auth.get === "function" 
+      ? await auth.get.call(auth, { path: { id: "cursor" } }).catch(() => undefined) 
+      : undefined;
+    
     const result = await getOrRefreshToken(savedAuth, async (tokens) => {
-      if (auth && typeof auth.set === "function") {
-        await auth.set({
+      if (typeof auth.set === "function") {
+        await auth.set.call(auth, {
           path: { id: "cursor" },
           body: {
             type: "oauth",
@@ -32,8 +37,20 @@ export async function resolveAndPersistApiKey(deps: { auth: any; log?: Logger })
         });
       }
     });
-    return result?.apiKey || process.env.CURSOR_API_KEY;
-  } catch {
+    const finalKey = result?.apiKey || process.env.CURSOR_API_KEY;
+    if (log && finalKey) {
+      log.debug("cursor-provider: resolved API key", {
+        source: result?.apiKey ? "saved-auth" : "env",
+        hint: `${finalKey.slice(0, 10)}...${finalKey.slice(-5)}`,
+      });
+    }
+    return finalKey;
+  } catch (err) {
+    if (log) {
+      log.error("cursor-provider: resolveAndPersistApiKey failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
     return process.env.CURSOR_API_KEY;
   }
 }

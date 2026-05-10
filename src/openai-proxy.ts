@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { Agent } from "@cursor/sdk";
+// import { Agent } from "@cursor/sdk";
 import type { Logger } from "./logger.js";
 import { STATIC_FALLBACK_MODELS } from "./models.js";
 import { translate, type LanguageModelV2Prompt } from "./translator.js";
@@ -123,12 +123,18 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
     log.debug("cursor-openai-proxy: pool hit", { prefixHash: translated.prefixHash.slice(0, 8) });
   } else {
     try {
+      const { Agent } = await import("@cursor/sdk");
       agent = await Agent.create({ apiKey, model: { id: modelId }, local: { cwd } });
       messageToSend = translated.fullPromptOnMiss;
       log.debug("cursor-openai-proxy: pool miss", { prefixHash: translated.prefixHash.slice(0, 8) });
     } catch (err) {
+      log.error("cursor-openai-proxy: Agent creation failed", {
+        error: err instanceof Error ? { ...err, message: err.message, stack: err.stack } : err,
+      });
       if (!res.headersSent) {
-        sendJson(res, 500, { error: { message: `Agent creation failed: ${err instanceof Error ? err.message : String(err)}` } });
+        const message = err instanceof Error ? (err as any).message || String(err) : String(err);
+        const details = (err as any).status ? ` (Status: ${(err as any).status}, Endpoint: ${(err as any).endpoint})` : "";
+        sendJson(res, 500, { error: { message: `Agent creation failed: ${message}${details}` } });
       }
       return;
     }

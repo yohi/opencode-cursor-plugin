@@ -1,4 +1,4 @@
-import { Agent, Cursor } from "@cursor/sdk";
+// import { Agent, Cursor } from "@cursor/sdk";
 import type { ProviderHook, ProviderHookContext } from "@opencode-ai/plugin";
 import { disposeAgentSafely } from "./agent-cleanup.js";
 import type { AgentPool } from "./agent-pool.js";
@@ -12,6 +12,7 @@ import { translate } from "./translator.js";
 const MODELS_LIST_TIMEOUT_MS = 10_000;
 
 async function listModelsWithTimeout(apiKey: string, log: Logger) {
+  const { Cursor } = await import("@cursor/sdk");
   let timeoutId: NodeJS.Timeout | undefined;
   try {
     return await Promise.race([
@@ -76,13 +77,10 @@ export function createProviderHook(deps: {
             } catch (err) {
               const message = err instanceof Error ? err.message : String(err);
               log.error("cursor-provider: doStream threw an error", { message });
-              const stream = new ReadableStream({
-                start(controller) {
-                  controller.enqueue({ type: "error", error: { message } });
-                  controller.close();
-                },
-              });
-              return { stream };
+              
+              // Instead of returning a stream with an error object, which might crash opencode core if it expects a specific format,
+              // we throw a standard Error object so that the Provider framework handles the rejection natively.
+              throw new Error(`Cursor Provider Error: ${message}`);
             }
           },
         };
@@ -177,6 +175,7 @@ async function runDoStream(opts: {
 }
 
 async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log: Logger; cwd: string }) {
+  const { Agent } = await import("@cursor/sdk");
   const { apiKey, modelId, log, cwd } = deps;
   try {
     return await Agent.create({ apiKey, model: { id: modelId }, local: { cwd } });

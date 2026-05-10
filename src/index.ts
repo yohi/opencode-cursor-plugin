@@ -39,12 +39,14 @@ const CursorProviderPlugin: Plugin = async (input) => {
       
       // Inject models if already configured to show them in the UI immediately
       if (config.provider?.cursor) {
+        const models = config.provider.cursor.models || {};
         const sourceModels = STATIC_FALLBACK_MODELS;
-        const modelsObj: Record<string, ModelMeta> = {};
         for (const m of sourceModels) {
-          modelsObj[m.id] = makeModelMeta(m);
+          if (!models[m.id]) {
+            models[m.id] = makeModelMeta(m);
+          }
         }
-        config.provider.cursor.models = modelsObj;
+        config.provider.cursor.models = models;
       }
     },
     auth: cursorAuthHook,

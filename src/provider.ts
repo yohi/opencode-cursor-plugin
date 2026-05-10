@@ -177,7 +177,7 @@ async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log
   } catch (err) {
     log.error("cursor-provider: Agent.create failed", {
       modelId,
-      apiKeyFingerprint: apiKey.slice(0, 10) + "...",
+      apiKeyFingerprint: fingerprintApiKey(apiKey),
       error: err instanceof Error ? err.message : String(err),
       stack: err instanceof Error ? err.stack : undefined,
     });

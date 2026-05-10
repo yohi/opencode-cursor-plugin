@@ -1,6 +1,6 @@
 import type { SDKAgent } from "@cursor/sdk";
 import type { Logger } from "./logger.js";
-import { classifyError, logError } from "./errors.js";
+import { classifyError, logError, getErrorName } from "./errors.js";
 
 export interface StreamProxyInput {
   agent: SDKAgent;
@@ -50,7 +50,7 @@ export function createStream(input: StreamProxyInput): {
   };
 
   const captureErrorType = (err: unknown) => {
-    const name = err instanceof Error ? err.constructor.name : "Error";
+    const name = getErrorName(err);
     lastErrorType = (name || "Error") as StreamErrorType;
   };
 
@@ -165,7 +165,7 @@ export function createStream(input: StreamProxyInput): {
           handleRunStatus(result);
         } catch (err) {
           const phase = hasEmittedDelta ? "in-stream" : "pre-stream";
-          const errName = err instanceof Error ? err.constructor.name : "Error";
+          const errName = getErrorName(err);
 
           if (phase === "pre-stream" && errName === "UnknownAgentError" && recreateAgent && !internalAbort.signal.aborted) {
             log.warn("stream-proxy: UnknownAgentError; retrying with new agent");

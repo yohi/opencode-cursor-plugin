@@ -2,15 +2,28 @@ import { describe, expect, it, vi } from "vitest";
 import { createLogger } from "../src/logger.js";
 import { createStream } from "../src/stream-proxy.js";
 
-vi.mock("@cursor/sdk", () => ({
-  NetworkError: class extends Error { isRetryable = true; },
-  UnknownAgentError: class extends Error {},
-  AuthenticationError: class extends Error {},
-  ConfigurationError: class extends Error {},
-  RateLimitError: class extends Error {},
-  IntegrationNotConnectedError: class extends Error {},
-  CursorSdkError: class extends Error {},
-}));
+// Ensure mock classes have the correct 'name' property even if minified/transpiled
+vi.mock("@cursor/sdk", () => {
+  const createMockError = (name: string, extraProps: Record<string, any> = {}) => {
+    return class extends Error {
+      constructor(m: string) {
+        super(m);
+        this.name = name;
+        Object.assign(this, extraProps);
+      }
+    };
+  };
+
+  return {
+    AuthenticationError: createMockError("AuthenticationError"),
+    ConfigurationError: createMockError("ConfigurationError"),
+    RateLimitError: createMockError("RateLimitError"),
+    NetworkError: createMockError("NetworkError", { isRetryable: true }),
+    IntegrationNotConnectedError: createMockError("IntegrationNotConnectedError"),
+    UnknownAgentError: createMockError("UnknownAgentError"),
+    CursorSdkError: createMockError("CursorSdkError"),
+  };
+});
 
 const log = createLogger({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() });
 
@@ -169,7 +182,6 @@ describe("stream-proxy", () => {
   it("hasEmittedDelta=true 時の NetworkError はリトライ発火せず error パートを流す", async () => {
     const { NetworkError } = await import("@cursor/sdk");
     const err = new NetworkError("flap");
-    Object.assign(err, { isRetryable: true });
     const agent = fakeAgent(async (onDelta) => {
       onDelta({ update: { type: "text-delta", text: "first chunk" } });
       throw err;
@@ -199,7 +211,6 @@ describe("stream-proxy", () => {
   it("pre-stream NetworkError リトライ後の status=error で error パートが enqueue される", async () => {
     const { NetworkError } = await import("@cursor/sdk");
     const err = new NetworkError("flap");
-    Object.assign(err, { isRetryable: true });
     let calls = 0;
     const agent = {
       send: vi.fn(async () => {

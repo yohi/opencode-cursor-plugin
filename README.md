@@ -31,6 +31,12 @@ OpenCode 用 Provider プラグイン。Cursor 公式 SDK (`@cursor/sdk`) を Op
    * プロジェクトの `.env` ファイルに `CURSOR_API_KEY` を追加するようユーザーに促すか、`opencode auth login cursor` の使用を提案してください。
 </details>
 
+## v0.3.0 (Latest)
+
+- **2026年モデルへの完全対応**: `composer-2`, `claude-4.6-sonnet`, `gpt-5.5` などの最新フラッグシップモデルをサポート。
+- **動的なモデル解決**: 起動時に Cursor API から最新のモデルリストとコンテキストウィンドウ情報を自動取得。
+- **マルチエージェント対応の最適化**: 内部の AgentPool を改善し、OpenCode からの並列リクエストに対する耐性を強化。
+
 ## v0.2.0 (BREAKING CHANGE)
 
 - 旧 `cursor_prompt` カスタムツールは削除されました。
@@ -42,11 +48,12 @@ OpenCode 用 Provider プラグイン。Cursor 公式 SDK (`@cursor/sdk`) を Op
 
 ### `cursor`
 
-利用例: `cursor/composer-2`, `cursor/claude-3-7-sonnet`, `cursor/gpt-4o`
+利用例: `cursor/composer-2`, `cursor/claude-4-6-sonnet`, `cursor/gpt-5-5`, `cursor/gemini-3-1-pro`
 
 OpenCode は Provider 経由で直接ストリーミング応答を受け取ります。
+本プラグインは起動時に Cursor の最新モデル一覧を動的に取得します。オフライン時や取得失敗時は、`composer-2` や `claude-4-6-sonnet` を含む静的なフォールバックリストが利用されます。
 
-`provider.cursor.whitelist` を設定すると、モデル一覧を特定のモデルに絞れます。未設定の場合はプラグイン側の既定モデルが表示されます。
+`provider.cursor.whitelist` を設定すると、モデル一覧を特定のモデルに絞れます。未設定の場合は取得されたすべてのモデルが表示されます。
 
 ## 必須環境変数
 
@@ -58,6 +65,12 @@ OpenCode は Provider 経由で直接ストリーミング応答を受け取り�
 cp .env.example .env
 # .env を編集して CURSOR_API_KEY を設定
 ```
+
+## 依存関係
+
+本プラグインは Cursor SDK を使用しています。SDK は現在ベータ版であり、破壊的変更を含むアップデートが頻繁に行われるため、動作確認済みのバージョンを固定して使用しています。
+
+- **Cursor SDK**: `@cursor/sdk@1.0.12`
 
 ## 開発（Devcontainer 推奨）
 
@@ -111,7 +124,7 @@ export CURSOR_API_KEY="..."
 opencode models cursor
 ```
 
-`cursor/composer-2` が表示されれば設定完了です。
+`cursor/composer-2` や `cursor/claude-4-6-sonnet` が表示されれば設定完了です。
 
 ## 設定例 (`opencode.jsonc`)
 

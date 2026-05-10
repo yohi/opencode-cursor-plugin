@@ -45,7 +45,7 @@ export function createProviderHook(deps: {
       const dynamicModels = apiKey ? await listModelsWithTimeout(apiKey, log) : null;
       const sourceModels = dynamicModels ?? STATIC_FALLBACK_MODELS;
 
-      const result: Record<string, any> = {};
+      const result: Record<string, unknown> = {};
       for (const model of sourceModels) {
         const meta = makeModelMeta({
           id: model.id,
@@ -112,11 +112,11 @@ async function runDoStream(opts: {
   const translated = translate(args.prompt);
   const fingerprint = fingerprintApiKey(apiKey);
   const hit = pool.tryGet(translated.prefixHash, modelId, apiKey);
-  let agent: any;
+  let agent: SDKAgent;
   let messageToSend: string;
 
   if (hit) {
-    agent = hit.agent;
+    agent = hit.agent as SDKAgent;
     messageToSend = translated.latestUserMessage;
     log.debug("cursor-provider: pool hit", { prefixHash: translated.prefixHash.slice(0, 8) });
   } else {
@@ -125,7 +125,7 @@ async function runDoStream(opts: {
     log.debug("cursor-provider: pool miss", { prefixHash: translated.prefixHash.slice(0, 8) });
   }
 
-  let replacedAgent: any;
+  let replacedAgent: SDKAgent | undefined;
   const recreateAgent = hit
     ? async () => {
         await disposeAgentSafely(agent, log);

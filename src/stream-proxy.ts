@@ -50,8 +50,18 @@ export function createStream(input: StreamProxyInput): {
   };
 
   const captureErrorType = (err: unknown) => {
-    const name = getErrorName(err);
-    lastErrorType = (name || "Error") as StreamErrorType;
+    const rawName = getErrorName(err);
+    const validTypes: StreamErrorType[] = [
+      "UnknownAgentError",
+      "NetworkError",
+      "AuthenticationError",
+      "RateLimitError",
+      "ConfigurationError",
+      "IntegrationNotConnectedError",
+      "CursorSdkError",
+    ];
+
+    lastErrorType = (validTypes.includes(rawName as StreamErrorType) ? rawName : "Error") as StreamErrorType;
   };
 
   const safeEnqueue = (part: { type: string; [key: string]: unknown }) => {
@@ -161,7 +171,7 @@ export function createStream(input: StreamProxyInput): {
           // @cursor/sdk@1.0.10 の SendOptions には signal がないため、abort は
           // この proxy 側で downstream を閉じて伝播させる。
           const run = await agent.send(message, { onDelta });
-          const result = await (run as any).wait();
+          const result = await (run as { wait: () => Promise<{ status: string }> }).wait();
           handleRunStatus(result);
         } catch (err) {
           const phase = hasEmittedDelta ? "in-stream" : "pre-stream";
@@ -189,7 +199,7 @@ export function createStream(input: StreamProxyInput): {
 
             try {
               const rerun = await agent.send(recreated.message, { onDelta });
-              const result = await (rerun as any).wait();
+              const result = await (rerun as { wait: () => Promise<{ status: string }> }).wait();
               handleRunStatus(result);
             } catch (retryErr) {
               captureErrorType(retryErr);
@@ -214,7 +224,7 @@ export function createStream(input: StreamProxyInput): {
             } else {
               try {
                 const rerun = await agent.send(message, { onDelta });
-                const result = await (rerun as any).wait();
+                const result = await (rerun as { wait: () => Promise<{ status: string }> }).wait();
                 handleRunStatus(result);
               } catch (retryErr) {
                 captureErrorType(retryErr);

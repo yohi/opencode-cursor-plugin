@@ -13,11 +13,18 @@ function noRetry(reason: string): RetryDecision {
 }
 
 export function getErrorName(err: unknown): string {
-  if (err instanceof Error) {
-    // Prefer name if it's set to something more specific than "Error"
-    if (err.name && err.name !== "Error") return err.name;
-    // Fallback to structural properties or constructor name
-    return (err as any).code || (err as any).protoErrorCode || err.constructor.name;
+  if (typeof err === "object" && err !== null) {
+    const e = err as {
+      name?: string;
+      code?: string | number;
+      protoErrorCode?: string | number;
+      constructor?: { name?: string };
+    };
+
+    if (e.name && e.name !== "Error") return e.name;
+    if (e.code) return String(e.code);
+    if (e.protoErrorCode) return String(e.protoErrorCode);
+    if (e.constructor?.name && e.constructor.name !== "Object") return e.constructor.name;
   }
   return String(err);
 }

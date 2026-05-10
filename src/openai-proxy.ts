@@ -220,6 +220,8 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
     }
     res.end();
   } catch (err) {
+    const errorDetails = err instanceof Error ? { message: err.message, stack: err.stack } : err;
+    log.error("cursor-openai-proxy: handleChat caught an error", { errorDetails });
     await disposeAgentSafely(agent, log);
     if (res.headersSent) {
       res.write(`data: ${JSON.stringify({ error: { message: err instanceof Error ? err.message : String(err) } })}\n\n`);

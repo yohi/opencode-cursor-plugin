@@ -15,18 +15,24 @@ export interface FallbackModel {
 export const DEFAULT_MODEL_ID = "composer-2";
 
 const CLAUDE_CAPABILITIES = {
-  input: { text: true, audio: false, image: true, video: false, pdf: true },
-};
-
-const CLAUDE_REASONING_CAPABILITIES = {
   reasoning: true,
   input: { text: true, audio: false, image: true, video: false, pdf: true },
 };
 
+/**
+ * Validates if a string is a valid ISO 8601 date (YYYY-MM-DD).
+ */
+export function assertISODateString(date: string): ISODateString {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new Error(`Invalid ISO date format: ${date}. Expected YYYY-MM-DD.`);
+  }
+  return date as ISODateString;
+}
+
 export const STATIC_FALLBACK_MODELS: ReadonlyArray<FallbackModel> = [
   { id: "composer-2", name: "Composer 2", contextWindow: 200_000, releaseDate: "2026-03-15", capabilities: { reasoning: true } },
   { id: "claude-sonnet-4-6", name: "Claude 4.6 Sonnet", contextWindow: 200_000, releaseDate: "2026-01-20", capabilities: CLAUDE_CAPABILITIES },
-  { id: "claude-opus-4-7", name: "Claude 4.7 Opus", contextWindow: 200_000, releaseDate: "2026-04-10", capabilities: CLAUDE_REASONING_CAPABILITIES },
+  { id: "claude-opus-4-7", name: "Claude 4.7 Opus", contextWindow: 200_000, releaseDate: "2026-04-10", capabilities: CLAUDE_CAPABILITIES },
   { id: "claude-haiku-4-5", name: "Claude 4.5 Haiku", contextWindow: 200_000, releaseDate: "2025-11-01", capabilities: CLAUDE_CAPABILITIES },
   { id: "claude-sonnet-4-5", name: "Claude 4.5 Sonnet", contextWindow: 200_000, releaseDate: "2025-10-15", capabilities: CLAUDE_CAPABILITIES },
   { id: "claude-sonnet-4", name: "Claude 4 Sonnet", contextWindow: 200_000, releaseDate: "2025-06-20", capabilities: CLAUDE_CAPABILITIES },

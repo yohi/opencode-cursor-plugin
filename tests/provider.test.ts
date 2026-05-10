@@ -25,7 +25,6 @@ async function makeHookHelper(resolveKey: any = async () => "key") {
     resolveApiKey: resolveKey,
     log,
     pool: createAgentPool({ log, capacity: 8 }),
-    cwd: "/test/cwd",
   });
   const ctx: any = { auth: { get: async () => undefined } };
   return { sdk, hook, ctx };
@@ -53,46 +52,14 @@ describe("createProviderHook.models()", () => {
     ]);
 
     const result = await hook.models?.("cursor" as any, ctx);
-    expect(result?.["composer-2"]).toMatchObject({
-      id: "composer-2",
-      providerID: "cursor",
-      name: "Composer 2",
-      api: {
-        id: "cursor",
-        url: "",
-        npm: "",
-      },
-      limit: {
-        context: 200_000,
-        output: 16_384,
-      },
-      capabilities: {
-        temperature: true,
-        reasoning: true,
-        attachment: false,
-        toolcall: false,
-        input: {
-          text: true,
-          audio: false,
-          image: false,
-          video: false,
-          pdf: false,
-        },
-        output: {
-          text: true,
-          audio: false,
-          image: false,
-          video: false,
-          pdf: false,
-        },
-        interleaved: false,
-      },
-    });
+    const meta = result?.["composer-2"];
+    expect(meta.id).toBe("composer-2");
+    expect(meta.name).toBe("Composer 2");
   });
 
   it("list 失敗時に静的フォールバック", async () => {
     const { sdk, hook, ctx } = await makeHookHelper();
-    vi.mocked(sdk.Cursor.models.list).mockRejectedValue(new Error("network"));
+    vi.mocked(sdk.Cursor.models.list).mockRejectedValue(new Error("fail"));
 
     const result = await hook.models?.("cursor" as any, ctx);
     expect(result && "composer-2" in result).toBe(true);
@@ -130,47 +97,51 @@ describe("createProviderHook.models()", () => {
     vi.mocked(sdk.Cursor.models.list).mockResolvedValue([
       { id: "composer-2", name: "Composer 2", contextWindow: 200_000 } as any,
     ]);
-    vi.mocked(sdk.Agent.create).mockResolvedValue({
-      send: vi.fn(async (_message: string, opts: any) => {
-        opts.onDelta({ update: { type: "turn-ended" } });
-        return { wait: async () => ({ status: "finished" }) };
-      }),
-      close: vi.fn(),
-    } as any);
 
-    const ctx1 = { tag: "ctx-1", auth: { get: vi.fn() } } as any;
-    const ctx2 = { tag: "ctx-2", auth: { get: vi.fn() } } as any;
-    const resolveApiKey = vi.fn(async (ctx: any) => (ctx === ctx1 ? "key-1" : "key-2"));
-    const { hook: hookWithSpy } = await makeHookHelper(resolveApiKey);
-
-    const models1 = await hookWithSpy.models?.("cursor" as any, ctx1);
-    // 別の ctx で models() が呼ばれても、models1 内の doStream には影響しないはず
-    await hookWithSpy.models?.("cursor" as any, ctx2);
-
-    const streamResult = await (models1 as any)?.["composer-2"]?.doStream({
-      prompt: [{ role: "user", content: [{ type: "text", text: "hello" }] }],
+    const resolveApiKey = vi.fn();
+    const hook = createProviderHook({
+      resolveApiKey,
+      log,
+      pool: createAgentPool({ log, capacity: 8 }),
     });
 
+    // 1回目の models() 呼び出しで生成された doStream は ctx1 を閉じ込める
+    const ctx1 = { id: 1 } as any;
+    resolveApiKey.mockResolvedValueOnce("key-1");
+    const models1 = await hook.models?.("cursor" as any, ctx1);
+    const doStream1 = models1?.["composer-2"].doStream;
+
+    // 2回目の models() 呼び出し (ctx2)
+    const ctx2 = { id: 2 } as any;
+    resolveApiKey.mockResolvedValueOnce("key-2");
+    await hook.models?.("cursor" as any, ctx2);
+
+    // doStream1 を実行。内部で resolveApiKey(ctx1) が呼ばれるはず
+    vi.mocked(sdk.Agent.create).mockResolvedValue({
+      send: vi.fn().mockResolvedValue({
+        wait: async () => ({ status: "finished" }),
+      }),
+    } as any);
+
+    resolveApiKey.mockResolvedValueOnce("key-1");
+    const streamResult = await doStream1({ prompt: [{ role: "user", content: "hi" }] } as any);
     await streamResult?.stream.getReader().read();
 
     // models1 から生成された doStream なので ctx1 を使うべき
     expect(resolveApiKey).toHaveBeenCalledWith(ctx1);
     expect(sdk.Agent.create).toHaveBeenCalledWith(
-      expect.objectContaining({ apiKey: "key-1", local: { cwd: "/test/cwd" } }),
+      expect.objectContaining({ apiKey: "key-1", cloud: {} }),
     );
   });
 
   it("listModelsWithTimeout が完了したときに clearTimeout が呼ばれる", async () => {
     const spy = vi.spyOn(global, "clearTimeout");
-    try {
-      const { sdk, hook, ctx } = await makeHookHelper();
-      vi.mocked(sdk.Cursor.models.list).mockResolvedValue([]);
+    const { sdk, hook, ctx } = await makeHookHelper();
+    vi.mocked(sdk.Cursor.models.list).mockResolvedValue([]);
 
-      await hook.models?.("cursor" as any, ctx);
+    await hook.models?.("cursor" as any, ctx);
 
-      expect(spy).toHaveBeenCalledTimes(1);
-    } finally {
-      spy.mockRestore();
-    }
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
   });
 });

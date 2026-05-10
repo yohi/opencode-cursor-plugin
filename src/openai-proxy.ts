@@ -86,7 +86,7 @@ function writeSse(res: ServerResponse, payload: unknown): void {
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
 }
 
-async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger, pool: AgentPool, cwd: string): Promise<void> {
+async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger, pool: AgentPool): Promise<void> {
   const apiKey = getBearerToken(req) ?? process.env.CURSOR_API_KEY?.trim();
   if (!apiKey) {
     sendJson(res, 401, { error: { message: "Cursor API key is not set" } });
@@ -123,7 +123,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
   } else {
     try {
       const { Agent } = await import("@cursor/sdk");
-      agent = await Agent.create({ apiKey, model: { id: modelId }, local: { cwd } }) as SDKAgent;
+      agent = await Agent.create({ apiKey, model: { id: modelId }, cloud: {} }) as SDKAgent;
       messageToSend = translated.fullPromptOnMiss;
       log.debug("cursor-openai-proxy: pool miss", { prefixHash: translated.prefixHash.slice(0, 8) });
     } catch (err) {
@@ -232,7 +232,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
   }
 }
 
-export async function startOpenAiProxy(log: Logger, pool: AgentPool, cwd: string): Promise<ProxyServer> {
+export async function startOpenAiProxy(log: Logger, pool: AgentPool): Promise<ProxyServer> {
   const server = createServer((req, res) => {
     void (async () => {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
@@ -245,7 +245,7 @@ export async function startOpenAiProxy(log: Logger, pool: AgentPool, cwd: string
       }
 
       if (req.method === "POST" && (url.pathname === "/v1/chat/completions" || url.pathname === "/chat/completions")) {
-        await handleChat(req, res, log, pool, cwd);
+        await handleChat(req, res, log, pool);
         return;
       }
 

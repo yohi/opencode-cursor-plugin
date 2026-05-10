@@ -136,7 +136,7 @@ describe("createProviderHook.models()", () => {
     await streamResult?.stream.getReader().read();
 
     // models1 から生成された doStream なので ctx1 を使うべき
-    expect(resolveApiKey).toHaveBeenCalledWith(ctx1);
+    expect(resolveApiKey).toHaveBeenCalledWith(ctx1, expect.anything());
     expect(sdk.Agent.create).toHaveBeenCalledWith(
       expect.objectContaining({ apiKey: "key-1" }),
     );

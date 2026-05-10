@@ -6,7 +6,7 @@ import { ensureCursorProviderConfig } from "./config.js";
 import { createLogger } from "./logger.js";
 import { startOpenAiProxy } from "./openai-proxy.js";
 import { createProviderHook } from "./provider.js";
-import { STATIC_FALLBACK_MODELS, makeModelMeta, type ModelMeta } from "./models.js";
+import { STATIC_FALLBACK_MODELS, makeModelMeta } from "./models.js";
 
 const POOL_CAPACITY = 8;
 
@@ -33,10 +33,9 @@ const CursorProviderPlugin: Plugin = async (input) => {
   const proxy = await startOpenAiProxy(log, pool);
 
   return {
-    name: "cursor",
-    onConfig: (config: Config) => {
+    config: async (config: Config) => {
       ensureCursorProviderConfig(config, { baseURL: proxy.baseURL });
-      
+
       // Inject models if already configured to show them in the UI immediately
       if (config.provider?.cursor) {
         const models = config.provider.cursor.models || {};

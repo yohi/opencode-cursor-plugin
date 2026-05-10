@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.3.7](https://github.com/yohi/opencode-cursor-plugin/compare/v1.3.6...v1.3.7) (2026-05-10)
+
+
+### Bug Fixes
+
+* address code review issues and remove redundant cwd ([cbb37c5](https://github.com/yohi/opencode-cursor-plugin/commit/cbb37c59d27845b9aa885d5837203477244407d4))
+* merge models instead of overwriting and secure API key logging ([af77963](https://github.com/yohi/opencode-cursor-plugin/commit/af779639a5c37cfd9ce346c9da1c926553186c41))
+* replace 'any' with proper types in src/index.ts ([de4f0e0](https://github.com/yohi/opencode-cursor-plugin/commit/de4f0e050ca3ae6f0ef6d1e7fa3e2f3d2d15b9ad))
+* use cloud agent execution to prevent native module segfaults ([081f9c6](https://github.com/yohi/opencode-cursor-plugin/commit/081f9c66596e45b7171e402b33870281c747ebdc))
+
 ## [1.3.6](https://github.com/yohi/opencode-cursor-plugin/compare/v1.3.5...v1.3.6) (2026-05-10)
 
 

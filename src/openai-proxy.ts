@@ -131,9 +131,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
         error: err instanceof Error ? { ...err, message: err.message, stack: err.stack } : err,
       });
       if (!res.headersSent) {
-        const message = err instanceof Error ? (err as any).message || String(err) : String(err);
-        const details = (err as any).status ? ` (Status: ${(err as any).status}, Endpoint: ${(err as any).endpoint})` : "";
-        sendJson(res, 500, { error: { message: `Agent creation failed: ${message}${details}` } });
+        sendJson(res, 500, { error: { message: "Agent creation failed" } });
       }
       return;
     }

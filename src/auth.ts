@@ -11,9 +11,12 @@ const CURSOR_POLL_REQUEST_TIMEOUT = 5000;
 
 export async function resolveAndPersistApiKey(deps: { auth: any; log?: Logger }): Promise<string | undefined> {
   const { auth, log } = deps;
-  if (!auth) return process.env.CURSOR_API_KEY;
+  const normalizedEnv = process.env.CURSOR_API_KEY?.trim() || undefined;
+  if (!auth) return normalizedEnv;
 
   try {
+    // Note: auth.get/set are methods of the Auth class from @opencode-ai/sdk.
+    // They must be called with the correct 'this' context.
     const savedAuth = typeof auth.get === "function" 
       ? await auth.get.call(auth, { path: { id: "cursor" } }).catch(() => undefined) 
       : undefined;
@@ -37,7 +40,7 @@ export async function resolveAndPersistApiKey(deps: { auth: any; log?: Logger })
         });
       }
     });
-    const finalKey = result?.apiKey || process.env.CURSOR_API_KEY;
+    const finalKey = result?.apiKey || normalizedEnv;
     if (log && finalKey) {
       log.debug("cursor-provider: resolved API key", {
         source: result?.apiKey ? "saved-auth" : "env",
@@ -50,7 +53,7 @@ export async function resolveAndPersistApiKey(deps: { auth: any; log?: Logger })
         error: err instanceof Error ? err.message : String(err),
       });
     }
-    return process.env.CURSOR_API_KEY;
+    return normalizedEnv;
   }
 }
 

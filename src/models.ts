@@ -135,6 +135,29 @@ export function makeModelMeta(model: FallbackModel): ModelMeta {
   const isAllowedStatus = (status?: string): status is AllowedStatus =>
     !!status && (allowedStatuses as readonly string[]).includes(status);
 
+  const input = {
+    text: true,
+    audio: false,
+    image: false,
+    video: false,
+    pdf: false,
+    ...model.capabilities?.input,
+  };
+
+  const output = {
+    text: true,
+    audio: false,
+    image: false,
+    video: false,
+    pdf: false,
+    ...model.capabilities?.output,
+  };
+
+  // Ensure releaseDate is valid at conversion time
+  const releaseDate = model.releaseDate
+    ? assertISODateString(model.releaseDate)
+    : assertISODateString("2026-01-01");
+
   return {
     id: model.id,
     providerID: "cursor",
@@ -147,25 +170,11 @@ export function makeModelMeta(model: FallbackModel): ModelMeta {
     capabilities: {
       temperature: true,
       reasoning: model.capabilities?.reasoning ?? false,
-      attachment: model.capabilities?.attachment ?? false,
+      attachment: model.capabilities?.attachment ?? (input.image || input.pdf),
       toolcall: model.capabilities?.toolcall ?? false,
       interleaved: model.capabilities?.interleaved ?? false,
-      input: {
-        text: true,
-        audio: false,
-        image: false,
-        video: false,
-        pdf: false,
-        ...model.capabilities?.input,
-      },
-      output: {
-        text: true,
-        audio: false,
-        image: false,
-        video: false,
-        pdf: false,
-        ...model.capabilities?.output,
-      },
+      input,
+      output,
     },
     cost: {
       input: 0,
@@ -182,6 +191,6 @@ export function makeModelMeta(model: FallbackModel): ModelMeta {
     ...(isAllowedStatus(model.status) ? { status: model.status } : {}),
     options: {},
     headers: {},
-    release_date: model.releaseDate ?? "2026-01-01",
+    release_date: releaseDate,
   };
 }

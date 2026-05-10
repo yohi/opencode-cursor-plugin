@@ -35,9 +35,14 @@ export function assertISODateString(date: string): ISODateString {
     throw new Error(`Invalid ISO date format: ${date}. Expected YYYY-MM-DD.`);
   }
 
-  const year = parseInt(match[1]!, 10);
-  const month = parseInt(match[2]!, 10);
-  const day = parseInt(match[3]!, 10);
+  const [, yearStr, monthStr, dayStr] = match;
+  if (!yearStr || !monthStr || !dayStr) {
+    throw new Error(`Invalid ISO date format: ${date}. Expected YYYY-MM-DD.`);
+  }
+
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthStr, 10);
+  const day = parseInt(dayStr, 10);
 
   const d = new Date(Date.UTC(year, month - 1, day));
   if (

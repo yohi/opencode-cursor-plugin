@@ -32,14 +32,23 @@ export async function resolveAndPersistApiKey(deps: {
       savedAuth = await (auth as { get: (...args: unknown[]) => Promise<unknown> }).get.call(auth, { path: { id: "cursor" } }).catch(() => undefined);
     } else if (hasAuthenticate(auth)) {
       const authPromise = (auth as { authenticate: (...args: unknown[]) => Promise<unknown> }).authenticate.call(auth, { id: "cursor" });
+      let timeoutId: NodeJS.Timeout | undefined;
       savedAuth = await Promise.race([
         authPromise,
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("auth.authenticate timeout")), 2000))
+        new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => {
+            reject(new Error("auth.authenticate timeout"));
+          }, 2000);
+        })
       ]).catch((err) => {
         if (log) {
           log.warn("cursor-provider: auth.authenticate failed or timed out", { error: err instanceof Error ? err.message : String(err) });
         }
         return undefined;
+      }).finally(() => {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
       });
     }
     

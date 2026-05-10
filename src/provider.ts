@@ -34,9 +34,8 @@ export function createProviderHook(deps: {
   resolveApiKey: (ctx: ProviderHookContext) => Promise<string | undefined>;
   log: Logger;
   pool: AgentPool;
-  cwd: string;
 }): ProviderHook {
-  const { resolveApiKey, log, pool, cwd } = deps;
+  const { resolveApiKey, log, pool } = deps;
   let warnedParamsOnce = false;
 
   return {
@@ -65,7 +64,6 @@ export function createProviderHook(deps: {
                 apiKey: currentApiKey,
                 log,
                 pool,
-                cwd,
                 warnState: {
                   hasWarned: () => warnedParamsOnce,
                   markWarned: () => {
@@ -96,10 +94,9 @@ async function runDoStream(opts: {
   apiKey: string | undefined;
   log: Logger;
   pool: AgentPool;
-  cwd: string;
   warnState: { hasWarned: () => boolean; markWarned: () => void };
 }) {
-  const { args, modelId, apiKey, log, pool, cwd, warnState } = opts;
+  const { args, modelId, apiKey, log, pool, warnState } = opts;
   if (!apiKey) {
     log.error("cursor-provider: doStream invoked without API key");
     throw new Error("Cursor API key is not set; run 'opencode auth login cursor' or export CURSOR_API_KEY");
@@ -115,7 +112,6 @@ async function runDoStream(opts: {
   const translated = translate(args.prompt);
   const fingerprint = fingerprintApiKey(apiKey);
   const hit = pool.tryGet(translated.prefixHash, modelId, apiKey);
-  const wasMiss = !hit;
   let agent: any;
   let messageToSend: string;
 
@@ -124,7 +120,7 @@ async function runDoStream(opts: {
     messageToSend = translated.latestUserMessage;
     log.debug("cursor-provider: pool hit", { prefixHash: translated.prefixHash.slice(0, 8) });
   } else {
-    agent = await createAgentWithRetry({ apiKey, modelId, log, cwd });
+    agent = await createAgentWithRetry({ apiKey, modelId, log });
     messageToSend = translated.fullPromptOnMiss;
     log.debug("cursor-provider: pool miss", { prefixHash: translated.prefixHash.slice(0, 8) });
   }
@@ -133,7 +129,7 @@ async function runDoStream(opts: {
   const recreateAgent = hit
     ? async () => {
         await disposeAgentSafely(agent, log);
-        const fresh = await createAgentWithRetry({ apiKey, modelId, log, cwd });
+        const fresh = await createAgentWithRetry({ apiKey, modelId, log });
         replacedAgent = fresh;
         return { agent: fresh, message: translated.fullPromptOnMiss };
       }
@@ -173,9 +169,9 @@ async function runDoStream(opts: {
   return { stream };
 }
 
-async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log: Logger; cwd: string }): Promise<SDKAgent> {
+async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log: Logger }): Promise<SDKAgent> {
   const { Agent } = await import("@cursor/sdk");
-  const { apiKey, modelId, log, cwd } = deps;
+  const { apiKey, modelId, log } = deps;
   try {
     return await Agent.create({ apiKey, model: { id: modelId }, cloud: {} }) as SDKAgent;
   } catch (err) {
@@ -190,6 +186,6 @@ async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log
     if (!decision.retry) throw err;
 
     await new Promise((resolve) => setTimeout(resolve, decision.delayMs));
-    return Agent.create({ apiKey, model: { id: modelId }, local: { cwd } });
+    return await Agent.create({ apiKey, model: { id: modelId }, cloud: {} }) as SDKAgent;
   }
 }

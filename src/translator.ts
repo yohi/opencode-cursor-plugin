@@ -6,7 +6,7 @@ export type PromptMessage =
   | { role: "system"; content: string | PromptPart[] }
   | { role: "user" | "assistant" | "tool"; content: string | PromptPart[] };
 
-export type LanguageModelV2Prompt = PromptMessage[];
+export type ModelV2Prompt = PromptMessage[];
 
 export interface TranslatedRequest {
   prefixHash: string;
@@ -55,7 +55,7 @@ function hashMessages(messages: PromptMessage[]): string {
   return hash.digest("hex");
 }
 
-export function translate(prompt: LanguageModelV2Prompt): TranslatedRequest {
+export function translate(prompt: ModelV2Prompt): TranslatedRequest {
   if (prompt.length === 0) {
     throw new Error("translate: prompt is empty");
   }
@@ -68,10 +68,13 @@ export function translate(prompt: LanguageModelV2Prompt): TranslatedRequest {
   const latestUserMessage = extractText(last);
   const prefixHash = hashMessages(prompt.slice(0, -1));
   const nextHash = hashMessages(prompt);
-  const fullPromptOnMiss = prompt
-    .map((message) => `<${message.role}>${escapeHtml(extractText(message))}</${message.role}>`)
-    .join("\n");
 
+  // 履歴がない（最初のターン）の場合は、XMLタグを付与せず生のテキストを送信する
+  const fullPromptOnMiss = prompt.length === 1
+    ? latestUserMessage
+    : prompt
+        .map((message) => `<${message.role}>${escapeHtml(extractText(message))}</${message.role}>`)
+        .join("\n");
 
   return {
     prefixHash,

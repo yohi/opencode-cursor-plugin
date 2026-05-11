@@ -2,10 +2,23 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { SDKAgent } from "@cursor/sdk";
 import type { Logger } from "./logger.js";
 import { STATIC_FALLBACK_MODELS } from "./models.js";
-import { translate, type LanguageModelV2Prompt } from "./translator.js";
+import { translate, type ModelV2Prompt } from "./translator.js";
 import type { AgentPool } from "./agent-pool.js";
 import { fingerprintApiKey } from "./agent-pool.js";
 import { disposeAgentSafely } from "./agent-cleanup.js";
+import { classifyError, logError } from "./errors.js";
+
+function extractErrorInfo(err: unknown): { name: string; code?: string | number; message: string; details?: unknown } {
+  const isObj = typeof err === "object" && err !== null;
+  const errObj = isObj ? (err as Record<string, unknown>) : {};
+  
+  return {
+    name: typeof errObj.name === "string" ? errObj.name : "UnknownError",
+    code: typeof errObj.code === "string" || typeof errObj.code === "number" ? errObj.code : undefined,
+    message: err instanceof Error ? err.message : String(err),
+    details: errObj.details,
+  };
+}
 
 type ProxyServer = {
   baseURL: string;
@@ -87,15 +100,31 @@ function writeSse(res: ServerResponse, payload: unknown): void {
 }
 
 async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger, pool: AgentPool): Promise<void> {
-  const apiKey = getBearerToken(req) ?? process.env.CURSOR_API_KEY?.trim();
+  const rawToken = getBearerToken(req) ?? process.env.CURSOR_API_KEY?.trim();
+  const apiKey = (rawToken && rawToken !== "undefined" && rawToken !== "null") ? rawToken : undefined;
+
+  log.debug("cursor-openai-proxy: received request", {
+    hasApiKey: !!apiKey,
+    apiKeyFingerprint: apiKey ? fingerprintApiKey(apiKey) : null,
+    model: req.method === "POST" ? "checking-body" : "n/a",
+  });
+
   if (!apiKey) {
-    sendJson(res, 401, { error: { message: "Cursor API key is not set" } });
+    sendJson(res, 401, { error: { message: "Cursor API key is not set or invalid" } });
     return;
   }
 
   const body = await readBody(req);
-  const modelId = body.model.startsWith("cursor/") ? body.model.slice("cursor/".length) : body.model;
-  const messages = body.messages as LanguageModelV2Prompt;
+  let modelId = body.model.startsWith("cursor/") ? body.model.slice("cursor/".length) : body.model;
+  
+  // Map simulated/unknown models to a known valid Cursor model to avoid invalid_argument errors from the real backend
+  const validCursorModels = STATIC_FALLBACK_MODELS.map((m) => m.id);
+  if (!validCursorModels.includes(modelId)) {
+    log.warn("cursor-openai-proxy: mapping unknown model to composer-2", { originalModel: modelId });
+    modelId = "composer-2";
+  }
+
+  const messages = body.messages as ModelV2Prompt;
   
   if (messages.length === 0) {
     sendJson(res, 400, { error: { message: "messages is empty" } });
@@ -113,35 +142,83 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
   };
   req.on("aborted", onDisconnect);
   res.on("close", onDisconnect);
-  let agent: SDKAgent;
-  let messageToSend: string;
+  let agent: SDKAgent | undefined;
+  let messageToSend: string | undefined;
 
   if (hit) {
     agent = hit.agent;
     messageToSend = translated.latestUserMessage;
     log.debug("cursor-openai-proxy: pool hit", { prefixHash: translated.prefixHash.slice(0, 8) });
   } else {
-    try {
-      const { Agent } = await import("@cursor/sdk");
-      agent = await Agent.create({ apiKey, model: { id: modelId }, cloud: {} }) as SDKAgent;
-      messageToSend = translated.fullPromptOnMiss;
-      log.debug("cursor-openai-proxy: pool miss", { prefixHash: translated.prefixHash.slice(0, 8) });
-    } catch (err) {
-      log.error("cursor-openai-proxy: Agent creation failed", {
-        error: err instanceof Error ? { ...err, message: err.message, stack: err.stack } : err,
-      });
-      if (!res.headersSent) {
-        sendJson(res, 500, { error: { message: "Agent creation failed" } });
+    const maxRetries = 3;
+    let attempt = 0;
+    const { Agent } = (await import("@cursor/sdk")) as { Agent: typeof import("@cursor/sdk").Agent };
+
+    while (attempt < maxRetries) {
+      attempt++;
+      try {
+        log.debug("cursor-openai-proxy: calling Agent.create (local mode)", { modelId });
+
+        agent = await Agent.create({
+          apiKey,
+          model: { id: modelId },
+        });
+        messageToSend = translated.fullPromptOnMiss;
+        log.debug("cursor-openai-proxy: pool miss", { prefixHash: translated.prefixHash.slice(0, 8) });
+        break;
+      } catch (err: unknown) {
+        const decision = classifyError(err, { phase: "create" });
+        const canRetry = attempt < maxRetries && decision.retry;
+        const info = extractErrorInfo(err);
+
+        logError(log, err, {
+          phase: "create",
+          model: modelId,
+          attempt,
+          maxRetries,
+          canRetry,
+          errName: info.name,
+          errCode: info.code,
+          errMessage: info.message,
+          details: info.details,
+        });
+
+        if (!canRetry) {
+          if (!res.headersSent) {
+            sendJson(res, 500, {
+              error: {
+                message: `Cursor Agent creation failed: [${info.name}${info.code ? `:${info.code}` : ""}] ${info.message} | Details: ${JSON.stringify(info.details || {})}`,
+                type: "server_error",
+              },
+            });
+          }
+          return;
+        }
+
+        const delay = decision.delayMs * Math.pow(2, attempt - 1);
+        await new Promise((resolve) => setTimeout(resolve, delay));
       }
-      return;
     }
+  }
+
+  if (!agent || !messageToSend) {
+    if (!res.headersSent) {
+      sendJson(res, 500, {
+        error: {
+          message: "Internal server error: agent or message missing",
+          type: "server_error",
+        },
+      });
+    }
+    return;
   }
 
   if (!body.stream) {
     let text = "";
     try {
       const run = await agent.send(messageToSend, {
-        onDelta: ({ update }) => {
+        onDelta: (args) => {
+          const update = args.update;
           if (update.type === "text-delta" || update.type === "thinking-delta") {
             text += update.text ?? "";
           }
@@ -165,12 +242,21 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
           choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }],
         });
       } else {
+        log.warn("cursor-openai-proxy: run non-finished", { status: result.status });
         await disposeAgentSafely(agent, log);
+        sendJson(res, 500, { error: { message: `Cursor run failed with status: ${result.status}` } });
       }
-    } catch (err) {
+    } catch (err: unknown) {
+      const info = extractErrorInfo(err);
+
+      log.error("cursor-openai-proxy: handleChat non-streaming error", { 
+        errorName: info.name,
+        errorCode: info.code,
+        message: info.message 
+      });
       await disposeAgentSafely(agent, log);
       if (!res.headersSent) {
-        sendJson(res, 500, { error: { message: err instanceof Error ? err.message : String(err) } });
+        sendJson(res, 500, { error: { message: `Cursor execution error: [${info.name}${info.code ? `:${info.code}` : ''}] ${info.message}` } });
       }
     }
     return;
@@ -186,7 +272,8 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
   try {
     const id = `cursor-${Date.now()}`;
     const run = await agent.send(messageToSend, {
-      onDelta({ update }) {
+      onDelta(args) {
+        const update = args.update;
         if (update.type !== "text-delta" && update.type !== "thinking-delta") return;
         writeSse(res, {
           id,
@@ -216,21 +303,30 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
       });
       res.write("data: [DONE]\n\n");
     } else {
+      log.warn("cursor-openai-proxy: run non-finished (streaming)", { status: result.status });
       await disposeAgentSafely(agent, log);
+      writeSse(res, { error: { message: `Cursor run failed with status: ${result.status}` } });
     }
     res.end();
-  } catch (err) {
-    const errorDetails = err instanceof Error ? { message: err.message, stack: err.stack } : err;
-    log.error("cursor-openai-proxy: handleChat caught an error", { errorDetails });
+  } catch (err: unknown) {
+    const info = extractErrorInfo(err);
+
+    log.error("cursor-openai-proxy: handleChat caught an error", { 
+      errorName: info.name,
+      errorCode: info.code,
+      message: info.message 
+    });
     await disposeAgentSafely(agent, log);
     if (res.headersSent) {
-      res.write(`data: ${JSON.stringify({ error: { message: err instanceof Error ? err.message : String(err) } })}\n\n`);
+      res.write(`data: ${JSON.stringify({ error: { message: `Cursor execution error: [${info.name}${info.code ? `:${info.code}` : ''}] ${info.message}` } })}\n\n`);
     } else {
-      sendJson(res, 500, { error: { message: err instanceof Error ? err.message : String(err) } });
+      sendJson(res, 500, { error: { message: `Cursor execution error: [${info.name}${info.code ? `:${info.code}` : ''}] ${info.message}` } });
     }
     res.end();
   }
 }
+
+
 
 export async function startOpenAiProxy(log: Logger, pool: AgentPool): Promise<ProxyServer> {
   const server = createServer((req, res) => {
@@ -250,7 +346,7 @@ export async function startOpenAiProxy(log: Logger, pool: AgentPool): Promise<Pr
       }
 
       sendJson(res, 404, { error: { message: "Not found" } });
-    })().catch((err) => {
+    })().catch((err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);
       log.warn("cursor-openai-proxy: request failed", { errorType: err instanceof Error ? err.constructor.name : typeof err, message });
       

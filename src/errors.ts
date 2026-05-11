@@ -36,34 +36,66 @@ export function getErrorName(err: unknown): string {
  */
 export function classifyError(err: unknown, ctx: { phase: RetryPhase }): RetryDecision {
   const errorName = getErrorName(err);
+  const errorMessage = err instanceof Error ? err.message : String(err);
+  const msgLower = errorMessage.toLowerCase();
 
-  if (errorName === "NetworkError") {
-    // We consider any NetworkError retryable in early phases (pre-delivery).
-    if (ctx.phase === "create" || ctx.phase === "pre-stream") {
-      return { retry: true, delayMs: 500, reason: "NetworkError safe to retry pre-delivery" };
-    }
+  const isRateLimit = errorName === "RateLimitError" || 
+                     errorName === "ResourceExhausted" || 
+                     msgLower.includes("rate limit");
 
-    // In later phases, we NEVER retry to avoid duplicating stream parts, 
-    // even if the SDK marks it as retryable.
-    return noRetry("NetworkError after delivery would duplicate stream");
+  const isNetwork = errorName === "NetworkError" || 
+                    errorName === "ConnectError" || 
+                    errorName === "Unavailable" || 
+                    errorName === "DeadlineExceeded" ||
+                    msgLower.includes("network error") ||
+                    msgLower.includes("timeout") ||
+                    msgLower.includes("timed out");
+
+  const isPreDelivery = ctx.phase === "create" || ctx.phase === "pre-stream";
+
+  if (isNetwork) {
+    return isPreDelivery 
+      ? { retry: true, delayMs: 1000, reason: "NetworkError safe to retry pre-delivery" }
+      : noRetry("NetworkError after delivery would duplicate stream");
   }
 
-  if (errorName === "AuthenticationError") return noRetry("AuthenticationError");
-  if (errorName === "ConfigurationError") return noRetry("ConfigurationError");
-  if (errorName === "RateLimitError") {
-    // Mirror the same phase check applied to "NetworkError"
-    if (ctx.phase === "create" || ctx.phase === "pre-stream") {
-      return { retry: true, delayMs: 2000, reason: "RateLimitError with backoff" };
-    }
-    return noRetry("RateLimitError after delivery would duplicate stream");
+  if (isRateLimit) {
+    return isPreDelivery
+      ? { retry: true, delayMs: 2000, reason: "RateLimitError with backoff" }
+      : noRetry("RateLimitError after delivery would duplicate stream");
   }
 
-  if (errorName === "IntegrationNotConnectedError") return noRetry("IntegrationNotConnectedError");
-  if (errorName === "UnknownAgentError") return noRetry("UnknownAgentError handled by caller");
-  if (errorName === "CursorSdkError" || errorName.endsWith("SdkError")) return noRetry("CursorSdkError");
+  // Handle specific non-retryable errors
+  const errorMap: Record<string, string> = {
+    AuthenticationError: "AuthenticationError",
+    IntegrationNotConnectedError: "IntegrationNotConnectedError",
+    UnknownAgentError: "UnknownAgentError handled by caller",
+    CursorSdkError: "CursorSdkError",
+  };
+
+  const mapped = Object.prototype.hasOwnProperty.call(errorMap, errorName)
+    ? errorMap[errorName as keyof typeof errorMap]
+    : undefined;
+  if (mapped !== undefined) return noRetry(mapped);
+  if (errorName.endsWith("SdkError")) return noRetry("CursorSdkError");
+
+  if (errorName === "ConfigurationError") {
+    if (msgLower.includes("repository_required") || msgLower.includes("repository is required")) {
+      return noRetry(`ConfigurationError: ${CONFIG_ERROR_MESSAGES.REPOSITORY_REQUIRED}`);
+    }
+    if (msgLower.includes("failed to verify existence of branch")) {
+      return noRetry(`ConfigurationError: ${CONFIG_ERROR_MESSAGES.BRANCH_VERIFICATION_FAILED}`);
+    }
+    return noRetry("ConfigurationError");
+  }
 
   return noRetry("unknown");
 }
+
+export const CONFIG_ERROR_MESSAGES = {
+  REPOSITORY_REQUIRED: "Repository is required. Set CURSOR_REPO_URL or ensure git remote is configured.",
+  BRANCH_VERIFICATION_FAILED: "Branch verification failed. Please ensure your GitHub account is connected at https://cursor.com/settings and has access to the repository. (Note: Bitbucket/GitLab may not be fully supported by Cursor's cloud agents; consider using a dummy GitHub URL as a workaround)",
+} as const;
 
 export function logError(log: Logger, err: unknown, context: Record<string, unknown>): void {
   const errorType = err instanceof Error ? getErrorName(err) : typeof err;

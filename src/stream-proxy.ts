@@ -25,6 +25,8 @@ export type StreamErrorType =
   | "CursorSdkError"
   | "Error";
 
+const isAborted = (signal: AbortSignal) => signal.aborted;
+
 export function createStream(input: StreamProxyInput): {
   stream: ReadableStream<unknown>;
   done: Promise<{ finishReason: StreamFinishReason; errorType?: StreamErrorType }>;
@@ -41,7 +43,7 @@ export function createStream(input: StreamProxyInput): {
   const onExternalAbort = () => internalAbort.abort();
 
   abortSignal?.addEventListener("abort", onExternalAbort);
-  if (abortSignal?.aborted) {
+  if (isAborted(internalAbort.signal)) {
     internalAbort.abort();
   }
 
@@ -218,8 +220,7 @@ export function createStream(input: StreamProxyInput): {
             let currentErr = err;
 
             while (attempt <= maxRetries) {
-              // biome-ignore lint/complexity/noUselessCondition: signal.aborted is changed by event listener
-              if (internalAbort.signal.aborted) break;
+              if (isAborted(internalAbort.signal)) break;
 
               const retryDecision = classifyError(currentErr, { phase });
               if (!retryDecision.retry) break;
@@ -229,8 +230,7 @@ export function createStream(input: StreamProxyInput): {
               log.info(`stream-proxy: retrying (attempt ${attempt}/${maxRetries}) in ${backoffDelay}ms...`);
               await new Promise((resolve) => setTimeout(resolve, backoffDelay));
               
-              // biome-ignore lint/complexity/noUselessCondition: signal.aborted is changed by event listener
-              if (internalAbort.signal.aborted) break;
+              if (isAborted(internalAbort.signal)) break;
 
               try {
                 const rerun = await agent.send(message, { onDelta });
@@ -245,9 +245,7 @@ export function createStream(input: StreamProxyInput): {
               }
             }
 
-            const isAborted = internalAbort.signal.aborted;
-            // biome-ignore lint/complexity/noUselessCondition: isAborted is dynamic
-            if (!isAborted) {
+            if (!isAborted(internalAbort.signal)) {
               captureErrorType(currentErr);
               safeEnqueue({ type: "error", error: { message: currentErr instanceof Error ? currentErr.message : String(currentErr) } });
               safeClose();
@@ -257,7 +255,7 @@ export function createStream(input: StreamProxyInput): {
           log.error("stream-proxy: unexpected error in async IIFE", { 
             error: unexpectedErr instanceof Error ? unexpectedErr.message : String(unexpectedErr) 
           });
-          if (!internalAbort.signal.aborted) {
+          if (!isAborted(internalAbort.signal)) {
             safeEnqueue({ type: "error", error: { message: "Unexpected internal error" } });
             safeClose();
           }

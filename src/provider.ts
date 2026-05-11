@@ -1,9 +1,10 @@
 import type { ProviderHook, ProviderHookContext } from "@opencode-ai/plugin";
 import type { SDKAgent } from "@cursor/sdk";
+import { setTimeout } from "node:timers/promises";
 
 // Extract ModelV2 type from ProviderHook definition
 type ProviderModelsFn = NonNullable<ProviderHook["models"]>;
-type ModelV2 = NonNullable<Awaited<ReturnType<ProviderModelsFn>>[string]>;
+type ExtractedModelV2 = NonNullable<Awaited<ReturnType<ProviderModelsFn>>[string]>;
 
 import { disposeAgentSafely } from "./agent-cleanup.js";
 import type { AgentPool } from "./agent-pool.js";
@@ -31,7 +32,7 @@ async function listModelsWithTimeout(apiKey: string, log: Logger): Promise<Fallb
     const rawModels = await Promise.race([
       Cursor.models.list({ apiKey }) as unknown as Promise<RawSDKModel[] | undefined | null>,
       new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => reject(new Error("models.list timeout")), MODELS_LIST_TIMEOUT_MS);
+        timeoutId = globalThis.setTimeout(() => reject(new Error("models.list timeout")), MODELS_LIST_TIMEOUT_MS);
       }),
     ]);
     if (!rawModels) return null;
@@ -52,7 +53,7 @@ async function listModelsWithTimeout(apiKey: string, log: Logger): Promise<Fallb
     });
     return null;
   } finally {
-    if (timeoutId !== undefined) clearTimeout(timeoutId);
+    if (timeoutId !== undefined) globalThis.clearTimeout(timeoutId);
   }
 }
 
@@ -71,7 +72,7 @@ export function createProviderHook(deps: {
       const dynamicModels = apiKey ? await listModelsWithTimeout(apiKey, log) : null;
       const sourceModels = dynamicModels ?? STATIC_FALLBACK_MODELS;
 
-      const modelMap = new Map<string, ModelV2>();
+      const modelMap = new Map<string, ExtractedModelV2>();
       for (const rawModel of sourceModels) {
         const id = rawModel.id;
         if (!id || typeof id !== "string" || id === "__proto__" || id === "constructor" || id === "prototype") {
@@ -96,7 +97,7 @@ export function createProviderHook(deps: {
         );
       }
 
-      return Object.fromEntries(modelMap);
+      return Object.fromEntries(modelMap) as Record<string, ExtractedModelV2>;
     },
   };
 }
@@ -108,7 +109,7 @@ function createLanguageModel(deps: {
   pool: AgentPool;
   resolveApiKey: (ctx: ProviderHookContext, log?: Logger) => Promise<string | undefined>;
   warnState: { hasWarned: () => boolean; markWarned: () => void };
-}): ModelV2 & {
+}): ExtractedModelV2 & {
   doStream(args: {
     prompt: ModelV2Prompt;
     abortSignal?: AbortSignal;
@@ -147,7 +148,7 @@ function createLanguageModel(deps: {
         throw new Error(`Cursor Provider Error: ${message}`);
       }
     },
-  } as ModelV2 & {
+  } as ExtractedModelV2 & {
     doStream(args: {
       prompt: ModelV2Prompt;
       abortSignal?: AbortSignal;
@@ -178,6 +179,18 @@ async function getValidCursorModels(apiKey: string | undefined, log: Logger): Pr
   return validSet;
 }
 
+function validateAndMapModel(modelId: string, validSet: Set<string>, log: Logger): string {
+  if (validSet.has(modelId)) return modelId;
+
+  if (validSet.has("composer-2")) {
+    log.warn("cursor-provider: mapping unknown model to composer-2", { originalModel: modelId });
+    return "composer-2";
+  }
+
+  log.warn("cursor-provider: proceeding with unknown model (no fallback found)", { modelId });
+  return modelId;
+}
+
 async function runDoStream(opts: {
   args: { prompt: ModelV2Prompt; abortSignal?: AbortSignal; chatParams?: unknown };
   modelId: string;
@@ -190,15 +203,7 @@ async function runDoStream(opts: {
   let { modelId } = opts;
 
   const validSet = await getValidCursorModels(apiKey, log);
-  if (!validSet.has(modelId)) {
-    // Only remap if we have a fallback, otherwise proceed but warn
-    if (validSet.has("composer-2")) {
-      log.warn("cursor-provider: mapping unknown model to composer-2", { originalModel: modelId });
-      modelId = "composer-2";
-    } else {
-      log.warn("cursor-provider: proceeding with unknown model (no fallback found)", { modelId });
-    }
-  }
+  modelId = validateAndMapModel(modelId, validSet, log);
 
   if (!apiKey) {
     log.error("cursor-provider: doStream invoked without API key");
@@ -275,42 +280,32 @@ async function runDoStream(opts: {
 async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log: Logger }): Promise<SDKAgent> {
   const { Agent } = await import("@cursor/sdk");
   const { apiKey, modelId, log } = deps;
-  const maxRetries = 3;
-  let attempt = 0;
 
-  while (attempt < maxRetries) {
-    attempt++;
+  for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       log.debug("cursor-provider: calling Agent.create (local mode)", { modelId });
-
-      return (await Agent.create({
-        apiKey,
-        model: { id: modelId },
-      })) as SDKAgent;
+      return (await Agent.create({ apiKey, model: { id: modelId } })) as SDKAgent;
     } catch (err) {
       const decision = classifyError(err, { phase: "create" });
-      const canRetry = attempt < maxRetries && decision.retry;
+      const canRetry = attempt < 3 && decision.retry;
       const errObj = (typeof err === "object" && err !== null) ? (err as Record<string, unknown>) : {};
 
       logError(log, err, {
         phase: "create",
         model: modelId,
         attempt,
-        maxRetries,
+        maxRetries: 3,
         canRetry,
         details: errObj.details,
       });
 
       if (!canRetry) throw err;
 
-      // Exponential backoff: 2s, 4s, 8s... modified by base delayMs
       const backoffDelay = decision.delayMs * Math.pow(2, attempt - 1);
       log.info(`cursor-provider: retrying in ${backoffDelay}ms...`);
-      await new Promise((resolve) => setTimeout(resolve, backoffDelay));
+      await setTimeout(backoffDelay);
     }
   }
-  // This point is only reached if all retry attempts fail or a non-retryable error occurs.
-  // The error is thrown to be handled by the caller (e.g., doStream's try-catch).
-  // codacy:ignore-issue:UnhandledErrorsDetectedInAsynchronousFunction
-  throw new Error("Agent creation failed after reaching maximum retries");
+
+  throw new Error("Agent creation failed after maximum retries");
 }

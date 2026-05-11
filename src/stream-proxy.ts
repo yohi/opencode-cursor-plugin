@@ -215,13 +215,15 @@ export function createStream(input: StreamProxyInput): {
             let attempt = 1; // 最初の失敗を1回目とする
             let currentErr = err;
 
-            while (attempt < maxRetries) {
+            while (attempt <= maxRetries) {
+              if (internalAbort.signal.aborted) break;
+
               const retryDecision = classifyError(currentErr, { phase });
-              if (!retryDecision.retry || internalAbort.signal.aborted) break;
+              if (!retryDecision.retry) break;
 
               const backoffDelay = retryDecision.delayMs * Math.pow(2, attempt - 1);
               
-              log.info(`stream-proxy: retrying (attempt ${attempt + 1}/${maxRetries}) in ${backoffDelay}ms...`);
+              log.info(`stream-proxy: retrying (attempt ${attempt}/${maxRetries}) in ${backoffDelay}ms...`);
               await new Promise((resolve) => setTimeout(resolve, backoffDelay));
               
               if (internalAbort.signal.aborted) break;
@@ -234,11 +236,12 @@ export function createStream(input: StreamProxyInput): {
               } catch (retryErr) {
                 currentErr = retryErr;
                 attempt++;
-                logError(log, retryErr, { phase, retry: attempt < maxRetries });
+                logError(log, retryErr, { phase, retry: attempt <= maxRetries });
               }
             }
 
-            if (!internalAbort.signal.aborted) {
+            const isAborted = internalAbort.signal.aborted;
+            if (!isAborted) {
               captureErrorType(currentErr);
               safeEnqueue({ type: "error", error: { message: currentErr instanceof Error ? currentErr.message : String(currentErr) } });
               safeClose();

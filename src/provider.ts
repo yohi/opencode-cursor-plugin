@@ -24,7 +24,7 @@ async function listModelsWithTimeout(apiKey: string, log: Logger): Promise<Fallb
   let timeoutId: NodeJS.Timeout | undefined;
   try {
     const rawModels = await Promise.race([
-      Cursor.models.list({ apiKey }) as unknown as Promise<RawSDKModel[]>,
+      Cursor.models.list({ apiKey }) as unknown as Promise<RawSDKModel[] | undefined | null>,
       new Promise<never>((_, reject) => {
         timeoutId = setTimeout(() => reject(new Error("models.list timeout")), MODELS_LIST_TIMEOUT_MS);
       }),
@@ -66,10 +66,10 @@ export function createProviderHook(deps: {
       const dynamicModels = apiKey ? await listModelsWithTimeout(apiKey, log) : null;
       const sourceModels = dynamicModels ?? STATIC_FALLBACK_MODELS;
 
-      const result: Record<string, LanguageModelV2ModelMetadata> = Object.create(null);
+      const result: Record<string, any> = Object.create(null);
       for (const rawModel of sourceModels) {
         const id = rawModel.id;
-        if (!id) continue;
+        if (!id || id === "__proto__" || id === "constructor" || id === "prototype") continue;
 
         const meta = makeModelMeta({
           ...rawModel,
@@ -266,7 +266,7 @@ async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log
       await new Promise((resolve) => setTimeout(resolve, backoffDelay));
     }
   }
-  // The loop above only exits via 'return' on success or 'throw err' on non-retryable/max-retries.
-  // We throw a final error here just to be absolutely certain and satisfy static analysis.
+  // This point is only reached if all retry attempts fail or a non-retryable error occurs.
+  // The error is thrown to be handled by the caller (e.g., doStream's try-catch).
   throw new Error("Agent creation failed after reaching maximum retries");
 }

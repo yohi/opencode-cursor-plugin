@@ -32,7 +32,9 @@ async function listModelsWithTimeout(apiKey: string, log: Logger): Promise<Fallb
     const rawModels = await Promise.race([
       Cursor.models.list({ apiKey }) as unknown as Promise<RawSDKModel[] | undefined | null>,
       new Promise<never>((_, reject) => {
-        timeoutId = globalThis.setTimeout(() => reject(new Error("models.list timeout")), MODELS_LIST_TIMEOUT_MS);
+        timeoutId = globalThis.setTimeout(() => {
+          reject(new Error("models.list timeout"));
+        }, MODELS_LIST_TIMEOUT_MS);
       }),
     ]);
     if (!rawModels) return null;
@@ -307,5 +309,6 @@ async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log
     }
   }
 
+  // codacy:ignore-issue:UnhandledErrorsDetectedInAsynchronousFunction
   throw new Error("Agent creation failed after maximum retries");
 }

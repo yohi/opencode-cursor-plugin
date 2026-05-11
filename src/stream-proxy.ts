@@ -43,7 +43,7 @@ export function createStream(input: StreamProxyInput): {
   const onExternalAbort = () => internalAbort.abort();
 
   abortSignal?.addEventListener("abort", onExternalAbort);
-  if (isAborted(internalAbort.signal)) {
+  if (abortSignal?.aborted) {
     internalAbort.abort();
   }
 

@@ -183,7 +183,8 @@ export function createStream(input: StreamProxyInput): {
                 agent = recreated.agent;
               } catch (retryErr) {
                 captureErrorType(retryErr);
-                logError(log, retryErr, { phase: "create", retry: false });
+                const retryDecision = classifyError(retryErr, { phase: "create" });
+                logError(log, retryErr, { phase: "create", retry: retryDecision.retry });
                 safeEnqueue({ type: "error", error: { message: retryErr instanceof Error ? retryErr.message : String(retryErr) } });
                 safeClose();
                 return;
@@ -201,7 +202,8 @@ export function createStream(input: StreamProxyInput): {
                 handleRunStatus(result);
               } catch (retryErr) {
                 captureErrorType(retryErr);
-                logError(log, retryErr, { phase: "pre-stream", retry: false });
+                const retryDecision = classifyError(retryErr, { phase: "pre-stream" });
+                logError(log, retryErr, { phase: "pre-stream", retry: retryDecision.retry });
                 safeEnqueue({ type: "error", error: { message: retryErr instanceof Error ? retryErr.message : String(retryErr) } });
                 safeClose();
               }
@@ -236,7 +238,8 @@ export function createStream(input: StreamProxyInput): {
               } catch (retryErr) {
                 currentErr = retryErr;
                 attempt++;
-                logError(log, retryErr, { phase, retry: attempt <= maxRetries });
+                const canRetryMore = attempt <= maxRetries;
+                logError(log, retryErr, { phase, retry: canRetryMore });
               }
             }
 

@@ -1,4 +1,4 @@
-import type { ProviderHook, ProviderHookContext } from "@opencode-ai/plugin";
+import type { ProviderHook, ProviderHookContext, LanguageModelV2 } from "@opencode-ai/plugin";
 import type { SDKAgent } from "@cursor/sdk";
 import { disposeAgentSafely } from "./agent-cleanup.js";
 import type { AgentPool } from "./agent-pool.js";
@@ -66,10 +66,13 @@ export function createProviderHook(deps: {
       const dynamicModels = apiKey ? await listModelsWithTimeout(apiKey, log) : null;
       const sourceModels = dynamicModels ?? STATIC_FALLBACK_MODELS;
 
-      const result: Record<string, any> = Object.create(null);
+      const result: Record<string, LanguageModelV2> = Object.create(null);
       for (const rawModel of sourceModels) {
         const id = rawModel.id;
-        if (!id || id === "__proto__" || id === "constructor" || id === "prototype") continue;
+        // Basic sanitization to prevent prototype pollution or other object injection issues
+        if (!id || typeof id !== "string" || id === "__proto__" || id === "constructor" || id === "prototype") {
+          continue;
+        }
 
         const meta = makeModelMeta({
           ...rawModel,
@@ -78,7 +81,7 @@ export function createProviderHook(deps: {
           contextWindow: rawModel.contextWindow,
         });
 
-        result[id] = {
+        const model: LanguageModelV2 = {
           ...meta,
           async doStream(args: { prompt: LanguageModelV2Prompt; abortSignal?: AbortSignal; chatParams?: unknown }) {
             try {
@@ -106,6 +109,8 @@ export function createProviderHook(deps: {
             }
           },
         };
+
+        result[id] = model;
       }
 
       return result;

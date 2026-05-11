@@ -73,10 +73,8 @@ export function classifyError(err: unknown, ctx: { phase: RetryPhase }): RetryDe
     "CursorSdkError": "CursorSdkError",
   };
 
-  if (Object.prototype.hasOwnProperty.call(errorMap, errorName)) {
-    const mapped = errorMap[errorName];
-    if (mapped) return noRetry(mapped);
-  }
+  const mapped = errorMap[errorName];
+  if (mapped !== undefined) return noRetry(mapped);
   if (errorName.endsWith("SdkError")) return noRetry("CursorSdkError");
 
   if (errorName === "ConfigurationError") {

@@ -14,12 +14,20 @@ async function listModelsWithTimeout(apiKey: string, log: Logger): Promise<Fallb
   const { Cursor } = await import("@cursor/sdk");
   let timeoutId: NodeJS.Timeout | undefined;
   try {
-    return await Promise.race([
+    const rawModels = await Promise.race([
       Cursor.models.list({ apiKey }) as unknown as Promise<FallbackModel[]>,
       new Promise<never>((_, reject) => {
         timeoutId = setTimeout(() => reject(new Error("models.list timeout")), MODELS_LIST_TIMEOUT_MS);
       }),
     ]);
+    if (!rawModels) return null;
+
+    return rawModels.map((raw) => ({
+      ...raw,
+      id: raw.id ?? (raw as any).modelId,
+      name: raw.name ?? (raw as any).displayName ?? (raw.id ?? (raw as any).modelId),
+      contextWindow: raw.contextWindow ?? 200_000,
+    }));
   } catch (err) {
     log.warn("cursor-provider: models.list failed; using static fallback", {
       errorType: err instanceof Error ? err.constructor.name : typeof err,

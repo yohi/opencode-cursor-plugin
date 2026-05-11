@@ -103,8 +103,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
 
   log.debug("cursor-openai-proxy: received request", {
     hasApiKey: !!apiKey,
-    keyLength: apiKey?.length,
-    keyPrefix: apiKey?.slice(0, 7),
+    apiKeyFingerprint: apiKey ? fingerprintApiKey(apiKey) : null,
     model: req.method === "POST" ? "checking-body" : "n/a",
   });
 
@@ -200,9 +199,15 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
     }
   }
 
-  if (!agent || messageToSend === undefined) {
-    // This should not happen if Agent creation or pool hit succeeded
-    sendJson(res, 500, { error: { message: "Failed to initialize Cursor Agent" } });
+  if (!agent || !messageToSend) {
+    if (!res.headersSent) {
+      sendJson(res, 500, {
+        error: {
+          message: "Internal server error: agent or message missing",
+          type: "server_error",
+        },
+      });
+    }
     return;
   }
 

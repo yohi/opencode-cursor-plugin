@@ -1,5 +1,10 @@
 import type { ProviderHook, ProviderHookContext } from "@opencode-ai/plugin";
 import type { SDKAgent } from "@cursor/sdk";
+
+// Extract ModelV2 type from ProviderHook definition
+type ProviderModelsFn = NonNullable<ProviderHook["models"]>;
+type ModelV2 = NonNullable<Awaited<ReturnType<ProviderModelsFn>>[string]>;
+
 import { disposeAgentSafely } from "./agent-cleanup.js";
 import type { AgentPool } from "./agent-pool.js";
 import { fingerprintApiKey } from "./agent-pool.js";
@@ -66,7 +71,7 @@ export function createProviderHook(deps: {
       const dynamicModels = apiKey ? await listModelsWithTimeout(apiKey, log) : null;
       const sourceModels = dynamicModels ?? STATIC_FALLBACK_MODELS;
 
-      const modelMap = new Map<string, any>();
+      const modelMap = new Map<string, ModelV2>();
       for (const rawModel of sourceModels) {
         const id = rawModel.id;
         if (!id || typeof id !== "string" || id === "__proto__" || id === "constructor" || id === "prototype") {
@@ -103,7 +108,13 @@ function createLanguageModel(deps: {
   pool: AgentPool;
   resolveApiKey: (ctx: ProviderHookContext, log?: Logger) => Promise<string | undefined>;
   warnState: { hasWarned: () => boolean; markWarned: () => void };
-}): any {
+}): ModelV2 & {
+  doStream(args: {
+    prompt: ModelV2Prompt;
+    abortSignal?: AbortSignal;
+    chatParams?: unknown;
+  }): Promise<{ stream: ReadableStream }>;
+} {
   const { rawModel, ctx, log, pool, resolveApiKey, warnState } = deps;
   const id = rawModel.id;
 
@@ -136,6 +147,12 @@ function createLanguageModel(deps: {
         throw new Error(`Cursor Provider Error: ${message}`);
       }
     },
+  } as ModelV2 & {
+    doStream(args: {
+      prompt: ModelV2Prompt;
+      abortSignal?: AbortSignal;
+      chatParams?: unknown;
+    }): Promise<{ stream: ReadableStream }>;
   };
 }
 

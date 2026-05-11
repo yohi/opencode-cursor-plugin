@@ -18,10 +18,13 @@ async function main() {
 
   const optsList = [
     { name: "With specific URL", opts: { apiKey, model: { id: "composer-2" }, cloud: { repos: [{ url: "https://github.com/yohi/opencode-cursor-plugin" }] } } },
-    { name: "With auto-detected URL", opts: { apiKey, model: { id: "composer-2" }, cloud: { repos: [{ url: repoUrl }] } } },
     { name: "Without repos array", opts: { apiKey, model: { id: "composer-2" }, cloud: {} } },
     { name: "With empty repos array", opts: { apiKey, model: { id: "composer-2" }, cloud: { repos: [] } } }
   ];
+
+  if (repoUrl) {
+    optsList.push({ name: "With auto-detected URL", opts: { apiKey, model: { id: "composer-2" }, cloud: { repos: [{ url: repoUrl }] } } });
+  }
 
   for (const tc of optsList) {
     console.log(`\n=== Testing: ${tc.name} ===`);
@@ -29,20 +32,24 @@ async function main() {
     try {
       await Agent.create(tc.opts);
       console.log("SUCCESS");
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errObj = err as Record<string, unknown>;
       console.log("FAILED");
-      console.log("Name:", err.name);
-      console.log("Message:", err.message);
-      console.log("Code:", err.code);
-      if (err.details) console.log("Details:", JSON.stringify(err.details, null, 2));
+      console.log("Name:", errObj.name);
+      console.log("Message:", err instanceof Error ? err.message : String(err));
+      console.log("Code:", errObj.code);
+      if (errObj.details) console.log("Details:", JSON.stringify(errObj.details, null, 2));
       
-      // Dump all enumerable properties
-      console.log("Full Object Dump:");
-      for (const key in err) {
-        console.log(`  ${key}:`, err[key]);
+      // Dump whitelist of safe properties
+      console.log("Error Details (Safe Dump):");
+      const allowedKeys = ["message", "name", "code", "status", "stack"];
+      for (const key of allowedKeys) {
+        if (errObj[key] !== undefined) {
+          console.log(`  ${key}:`, errObj[key]);
+        }
       }
     }
   }
 }
 
-main().catch(console.error);
+void main().catch(console.error);

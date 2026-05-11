@@ -23,8 +23,9 @@ export function resolveRepoUrl(log?: Logger): string | undefined {
       // Convert SSH to HTTPS if needed
       // Format: git@github.com:user/repo.git -> https://github.com/user/repo.git
       if (url.startsWith("git@")) {
-        url = url.replace(":", "/").replace("git@", "https://").replace(/\.git$/, "");
+        url = url.replace(":", "/").replace("git@", "https://");
       }
+      url = url.replace(/\.git$/, "");
 
       if (!url.startsWith("http://") && !url.startsWith("https://")) {
         if (log) log.debug("cursor-provider: ignored non-http repo url", { url });

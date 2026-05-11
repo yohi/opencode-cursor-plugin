@@ -37,50 +37,54 @@ export function getErrorName(err: unknown): string {
 export function classifyError(err: unknown, ctx: { phase: RetryPhase }): RetryDecision {
   const errorName = getErrorName(err);
   const errorMessage = err instanceof Error ? err.message : String(err);
+  const msgLower = errorMessage.toLowerCase();
+
   const isRateLimit = errorName === "RateLimitError" || 
                      errorName === "ResourceExhausted" || 
-                     errorMessage.toLowerCase().includes("rate limit");
+                     msgLower.includes("rate limit");
 
   const isNetwork = errorName === "NetworkError" || 
                     errorName === "ConnectError" || 
                     errorName === "Unavailable" || 
                     errorName === "DeadlineExceeded" ||
-                    errorMessage.toLowerCase().includes("network error") ||
-                    errorMessage.toLowerCase().includes("timeout") ||
-                    errorMessage.toLowerCase().includes("timed out");
+                    msgLower.includes("network error") ||
+                    msgLower.includes("timeout") ||
+                    msgLower.includes("timed out");
+
+  const isPreDelivery = ctx.phase === "create" || ctx.phase === "pre-stream";
 
   if (isNetwork) {
-    // We consider any NetworkError retryable in early phases (pre-delivery).
-    if (ctx.phase === "create" || ctx.phase === "pre-stream") {
-      return { retry: true, delayMs: 1000, reason: "NetworkError safe to retry pre-delivery" };
-    }
-
-    // In later phases, we NEVER retry to avoid duplicating stream parts, 
-    // even if the SDK marks it as retryable.
-    return noRetry("NetworkError after delivery would duplicate stream");
+    return isPreDelivery 
+      ? { retry: true, delayMs: 1000, reason: "NetworkError safe to retry pre-delivery" }
+      : noRetry("NetworkError after delivery would duplicate stream");
   }
 
   if (isRateLimit) {
-    // Mirror the same phase check applied to "NetworkError"
-    if (ctx.phase === "create" || ctx.phase === "pre-stream") {
-      return { retry: true, delayMs: 2000, reason: "RateLimitError with backoff" };
-    }
-    return noRetry("RateLimitError after delivery would duplicate stream");
+    return isPreDelivery
+      ? { retry: true, delayMs: 2000, reason: "RateLimitError with backoff" }
+      : noRetry("RateLimitError after delivery would duplicate stream");
   }
 
-  if (errorName === "AuthenticationError") return noRetry("AuthenticationError");
+  // Handle specific non-retryable errors
+  const errorMap: Record<string, string> = {
+    "AuthenticationError": "AuthenticationError",
+    "IntegrationNotConnectedError": "IntegrationNotConnectedError",
+    "UnknownAgentError": "UnknownAgentError handled by caller",
+    "CursorSdkError": "CursorSdkError",
+  };
+
+  if (errorMap[errorName]) return noRetry(errorMap[errorName]);
+  if (errorName.endsWith("SdkError")) return noRetry("CursorSdkError");
+
   if (errorName === "ConfigurationError") {
-    if (errorMessage.includes("repository_required") || errorMessage.includes("Repository is required")) {
+    if (msgLower.includes("repository_required") || msgLower.includes("repository is required")) {
       return noRetry("ConfigurationError: Repository is required. Set CURSOR_REPO_URL or ensure git remote is configured.");
     }
-    if (errorMessage.includes("Failed to verify existence of branch")) {
+    if (msgLower.includes("failed to verify existence of branch")) {
       return noRetry("ConfigurationError: Branch verification failed. Please ensure your GitHub account is connected at https://cursor.com/settings and has access to the repository. (Note: Bitbucket/GitLab may not be fully supported by Cursor's cloud agents; consider using a dummy GitHub URL as a workaround)");
     }
     return noRetry("ConfigurationError");
   }
-  if (errorName === "IntegrationNotConnectedError") return noRetry("IntegrationNotConnectedError");
-  if (errorName === "UnknownAgentError") return noRetry("UnknownAgentError handled by caller");
-  if (errorName === "CursorSdkError" || errorName.endsWith("SdkError")) return noRetry("CursorSdkError");
 
   return noRetry("unknown");
 }

@@ -1,14 +1,15 @@
-import { Agent } from "@cursor/sdk";
+import { Agent, type Run as SDKRun } from "@cursor/sdk";
 
-async function test(name: string, opts: any) {
+async function test(name: string, opts: Record<string, unknown>) {
   try {
     console.log(`\n--- Testing: ${name} ---`);
-    const agent = await Agent.create(opts);
+    const agent = await Agent.create(opts as any);
     const run = await agent.send("hello");
-    const result = await (run as any).wait();
+    const result = await (run as SDKRun).wait();
     console.log("SUCCESS!", result.status);
-  } catch (err: any) {
-    console.log(`FAILED: [${err.name}] ${err.message}`);
+  } catch (err: unknown) {
+    const errObj = err as Record<string, unknown>;
+    console.log(`FAILED: [${errObj.name}] ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
@@ -33,4 +34,4 @@ async function main() {
   });
 }
 
-main();
+void main().catch(console.error);

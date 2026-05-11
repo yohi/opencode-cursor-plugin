@@ -1,12 +1,12 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import type { SDKAgent } from "@cursor/sdk";
+import type { SDKAgent, Run as SDKRun } from "@cursor/sdk";
 import type { Logger } from "./logger.js";
 import { STATIC_FALLBACK_MODELS } from "./models.js";
 import { translate, type LanguageModelV2Prompt } from "./translator.js";
 import type { AgentPool } from "./agent-pool.js";
 import { fingerprintApiKey } from "./agent-pool.js";
 import { disposeAgentSafely } from "./agent-cleanup.js";
-import { resolveRepoInfo } from "./git.js";
+import { classifyError, logError } from "./errors.js";
 
 type ProxyServer = {
   baseURL: string;
@@ -144,39 +144,40 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
     while (true) {
       attempt++;
       try {
-        const { Agent } = await import("@cursor/sdk");
+        const { Agent } = (await import("@cursor/sdk")) as { Agent: typeof import("@cursor/sdk").Agent };
         log.debug("cursor-openai-proxy: calling Agent.create (local mode)", { modelId });
 
-        agent = (await Agent.create({
+        agent = await Agent.create({
           apiKey,
           model: { id: modelId },
-        })) as SDKAgent;
+        });
         messageToSend = translated.fullPromptOnMiss;
         log.debug("cursor-openai-proxy: pool miss", { prefixHash: translated.prefixHash.slice(0, 8) });
         break;
-      } catch (err) {
-        const errName = (err && typeof err === "object" && "name" in err ? (err as any).name : "UnknownError") as string;
-        const errCode = err && typeof err === "object" && "code" in err ? (err as any).code : undefined;
-        const errMessage = err instanceof Error ? err.message : String(err);
+      } catch (err: unknown) {
+        const decision = classifyError(err, { phase: "create" });
+        const canRetry = attempt < maxRetries && decision.retry;
 
-        const isRetryable = errName === "NetworkError" || errName === "RateLimitError" || errName === "ConnectError" || errMessage.toLowerCase().includes("rate limit");
-        const canRetry = attempt < maxRetries && isRetryable;
+        const errObj = err as Record<string, unknown>;
+        const errName = (typeof errObj?.name === "string" ? errObj.name : "UnknownError");
+        const errCode = (typeof errObj?.code === "string" || typeof errObj?.code === "number" ? errObj.code : undefined);
+        const errMessage = err instanceof Error ? err.message : String(err);
 
         log.error(`cursor-openai-proxy: Agent creation failed (attempt ${attempt}/${maxRetries})`, {
           modelId,
           errorName: errName,
           errorCode: errCode,
           message: errMessage,
-          details: (err as any).details,
-          fullError: JSON.stringify(err, Object.getOwnPropertyNames(err)),
+          details: errObj?.details,
           retry: canRetry,
         });
+        logError(log, err, { phase: "create", model: modelId });
 
         if (!canRetry) {
           if (!res.headersSent) {
             sendJson(res, 500, {
               error: {
-                message: `Cursor Agent creation failed: [${errName}${errCode ? `:${errCode}` : ""}] ${errMessage} | Details: ${JSON.stringify((err as any).details || {})}`,
+                message: `Cursor Agent creation failed: [${errName}${errCode ? `:${errCode}` : ""}] ${errMessage} | Details: ${JSON.stringify(errObj?.details || {})}`,
                 type: "server_error",
               },
             });
@@ -184,7 +185,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
           return;
         }
 
-        const delay = (errName === "RateLimitError" ? 2000 : 1000) * Math.pow(2, attempt - 1);
+        const delay = decision.delayMs * Math.pow(2, attempt - 1);
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }
@@ -194,14 +195,15 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
     let text = "";
     try {
       const run = await agent.send(messageToSend, {
-        onDelta: ({ update }) => {
+        onDelta: (args) => {
+          const update = args.update;
           if (update.type === "text-delta" || update.type === "thinking-delta") {
             text += update.text ?? "";
           }
         },
       });
 
-      const result = await (run as any).wait();
+      const result = await run.wait();
 
       if (result.status === "finished") {
         await pool.put(translated.nextHash, {
@@ -222,9 +224,10 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
         await disposeAgentSafely(agent, log);
         sendJson(res, 500, { error: { message: `Cursor run failed with status: ${result.status}` } });
       }
-    } catch (err) {
-      const errName = err && typeof err === 'object' && 'name' in err ? (err as any).name : 'UnknownError';
-      const errCode = err && typeof err === 'object' && 'code' in err ? (err as any).code : undefined;
+    } catch (err: unknown) {
+      const errObj = err as Record<string, unknown>;
+      const errName = (typeof errObj?.name === "string" ? errObj.name : "UnknownError");
+      const errCode = (typeof errObj?.code === "string" || typeof errObj?.code === "number" ? errObj.code : undefined);
       const errMessage = err instanceof Error ? err.message : String(err);
 
       log.error("cursor-openai-proxy: handleChat non-streaming error", { 
@@ -250,7 +253,8 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
   try {
     const id = `cursor-${Date.now()}`;
     const run = await agent.send(messageToSend, {
-      onDelta({ update }) {
+      onDelta(args) {
+        const update = args.update;
         if (update.type !== "text-delta" && update.type !== "thinking-delta") return;
         writeSse(res, {
           id,
@@ -262,7 +266,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
       },
     });
 
-    const result = await (run as any).wait();
+    const result = await run.wait();
 
     if (result.status === "finished") {
       await pool.put(translated.nextHash, {
@@ -285,9 +289,10 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
       writeSse(res, { error: { message: `Cursor run failed with status: ${result.status}` } });
     }
     res.end();
-  } catch (err) {
-    const errName = err && typeof err === 'object' && 'name' in err ? (err as any).name : 'UnknownError';
-    const errCode = err && typeof err === 'object' && 'code' in err ? (err as any).code : undefined;
+  } catch (err: unknown) {
+    const errObj = err as Record<string, unknown>;
+    const errName = (typeof errObj?.name === "string" ? errObj.name : "UnknownError");
+    const errCode = (typeof errObj?.code === "string" || typeof errObj?.code === "number" ? errObj.code : undefined);
     const errMessage = err instanceof Error ? err.message : String(err);
 
     log.error("cursor-openai-proxy: handleChat caught an error", { 
@@ -304,6 +309,8 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
     res.end();
   }
 }
+
+
 
 export async function startOpenAiProxy(log: Logger, pool: AgentPool): Promise<ProxyServer> {
   const server = createServer((req, res) => {
@@ -323,7 +330,7 @@ export async function startOpenAiProxy(log: Logger, pool: AgentPool): Promise<Pr
       }
 
       sendJson(res, 404, { error: { message: "Not found" } });
-    })().catch((err) => {
+    })().catch((err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);
       log.warn("cursor-openai-proxy: request failed", { errorType: err instanceof Error ? err.constructor.name : typeof err, message });
       

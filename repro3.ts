@@ -1,4 +1,4 @@
-import { Agent } from "@cursor/sdk";
+import { Agent, type Run as SDKRun } from "@cursor/sdk";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -25,13 +25,14 @@ async function main() {
     
     console.log("Sending message...");
     const run = await agent.send("What is 1+1? Answer briefly.");
-    const result = await (run as any).wait();
+    const result = await (run as SDKRun).wait();
     
     console.log("SUCCESS!", result.status);
     console.log("Result:", result.result);
-  } catch (err: any) {
-    console.log(`FAILED: [${err.name}] ${err.message}`);
+  } catch (err: unknown) {
+    const errObj = err as Record<string, unknown>;
+    console.log(`FAILED: [${errObj.name}] ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
-main();
+void main().catch(console.error);

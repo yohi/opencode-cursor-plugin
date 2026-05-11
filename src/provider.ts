@@ -8,7 +8,6 @@ import type { Logger } from "./logger.js";
 import { STATIC_FALLBACK_MODELS, makeModelMeta, type FallbackModel } from "./models.js";
 import { createStream } from "./stream-proxy.js";
 import { translate, type LanguageModelV2Prompt } from "./translator.js";
-import { resolveRepoInfo } from "./git.js";
 
 const MODELS_LIST_TIMEOUT_MS = 10_000;
 async function listModelsWithTimeout(apiKey: string, log: Logger): Promise<FallbackModel[] | null> {
@@ -208,9 +207,9 @@ async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log
         apiKeyFingerprint: fingerprintApiKey(apiKey),
         error: err instanceof Error ? err.message : String(err),
         details: (err as any).details,
-        fullError: JSON.stringify(err, Object.getOwnPropertyNames(err)),
         retry: canRetry,
       });
+      logError(log, err, { phase: "create", model: modelId });
 
       if (!canRetry) throw err;
 

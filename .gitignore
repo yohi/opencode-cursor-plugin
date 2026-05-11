@@ -7,3 +7,7 @@ dist/
 .DS_Store
 coverage/
 .worktrees/
+debug-create.ts
+repro.ts
+repro2.ts
+repro3.ts

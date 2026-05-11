@@ -9,7 +9,12 @@ The `@cursor/sdk` package lets you call Cursor's agent from your own code. The s
 
 The SDK wraps local and cloud runtimes behind one interface. You write the same code regardless of where the agent runs.
 
-RuntimeWhat it doesWhen to use**Local**Runs the agent inline in your Node process. Files come from disk.Dev scripts and CI checks against a working tree.**Cloud (Cursor-hosted)**Runs in an isolated VM with your repo cloned in. Cursor runs the VMs.When the caller doesn't have the repo, you want many agents in parallel, or runs need to survive the caller disconnecting.**Cloud (self-hosted)**Same shape, but you run the VMs via a [self-hosted pool](/docs/cloud-agent/self-hosted-pool).Same reasons as Cursor-hosted, plus code, secrets, and build artifacts must stay in your environment.
+| Runtime | What it does | When to use |
+| :--- | :--- | :--- |
+| **Local** | Runs the agent inline in your Node process. Files come from disk. | Dev scripts and CI checks against a working tree. |
+| **Cloud (Cursor-hosted)** | Runs in an isolated VM with your repo cloned in. Cursor runs the VMs. | When the caller doesn't have the repo, you want many agents in parallel, or runs need to survive the caller disconnecting. |
+| **Cloud (self-hosted)** | Same shape, but you run the VMs via a [self-hosted pool](/docs/cloud-agent/self-hosted-pool). | Same reasons as Cursor-hosted, plus code, secrets, and build artifacts must stay in your environment. |
+
 Runtime is picked by which key you pass to `Agent.create()` (`local` or `cloud`). Use the same `CURSOR_API_KEY` for either.
 
 For the REST API, see the [Cloud Agents API](/docs/cloud-agent/api/endpoints).
@@ -23,7 +28,7 @@ The SDK accepts user API keys and service account API keys for both local and cl
 - **User API key** from [Cursor Dashboard → Integrations](https://cursor.com/dashboard/integrations)
 - **Service account API key** from [Team settings](https://cursor.com/dashboard/team-settings). See [Service accounts](/docs/account/enterprise/service-accounts)
 
-```
+```bash
 export CURSOR_API_KEY="your-key"
 ```
 
@@ -33,10 +38,15 @@ SDK runs follow the same pricing, request pools, and Privacy Mode rules as runs 
 
 ## Core concepts
 
-ConceptDescription**Agent**Durable container that holds conversation state, workspace config, and settings. Survives across multiple prompts.**Run**One prompt submission. Owns its own stream, status, result, and cancellation.**SDKMessage**Normalized stream events emitted during a run. Same shape across all runtimes.
+| Concept | Description |
+| :--- | :--- |
+| **Agent** | Durable container that holds conversation state, workspace config, and settings. Survives across multiple prompts. |
+| **Run** | One prompt submission. Owns its own stream, status, result, and cancellation. |
+| **SDKMessage** | Normalized stream events emitted during a run. Same shape across all runtimes. |
+
 ## Installation
 
-```
+```bash
 npm install @cursor/sdk
 ```
 
@@ -44,7 +54,7 @@ npm install @cursor/sdk
 
 The fastest way in: a local agent against your current working tree, streaming events as they come in. Cloud setup is in [Creating agents](#creating-agents) below.
 
-```
+```ts
 import { Agent } from "@cursor/sdk";
 
 const agent = await Agent.create({
@@ -64,13 +74,13 @@ Each event is a discriminated `SDKMessage`. [Streaming](#streaming) shows how to
 
 ## Creating agents
 
-```
+```ts
 function Agent.create(options: AgentOptions): Promise<SDKAgent>;
 ```
 
 `Agent.create()` validates options and returns a handle immediately. Pass either `local` or `cloud` to pick a runtime.
 
-```
+```ts
 // Local agent
 const agent = await Agent.create({
   apiKey: process.env.CURSOR_API_KEY!,

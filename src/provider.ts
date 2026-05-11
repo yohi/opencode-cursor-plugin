@@ -45,7 +45,7 @@ export function createProviderHook(deps: {
       const dynamicModels = apiKey ? await listModelsWithTimeout(apiKey, log) : null;
       const sourceModels = dynamicModels ?? STATIC_FALLBACK_MODELS;
 
-      const result: Record<string, unknown> = Object.create(null);
+      const result: Record<string, any> = Object.create(null);
       for (const rawModel of sourceModels) {
         // SDK は id または modelId を返す可能性があるため、両方を確認する
         const id = rawModel.id ?? (rawModel as any).modelId;

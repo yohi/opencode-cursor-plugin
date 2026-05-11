@@ -141,8 +141,8 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
   };
   req.on("aborted", onDisconnect);
   res.on("close", onDisconnect);
-  let agent: SDKAgent;
-  let messageToSend: string;
+  let agent: SDKAgent | undefined;
+  let messageToSend: string | undefined;
 
   if (hit) {
     agent = hit.agent;
@@ -198,6 +198,12 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }
+  }
+
+  if (!agent || messageToSend === undefined) {
+    // This should not happen if Agent creation or pool hit succeeded
+    sendJson(res, 500, { error: { message: "Failed to initialize Cursor Agent" } });
+    return;
   }
 
   if (!body.stream) {

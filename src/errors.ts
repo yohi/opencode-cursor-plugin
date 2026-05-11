@@ -73,21 +73,26 @@ export function classifyError(err: unknown, ctx: { phase: RetryPhase }): RetryDe
     "CursorSdkError": "CursorSdkError",
   };
 
-  if (errorMap[errorName]) return noRetry(errorMap[errorName]);
+  if (Object.prototype.hasOwnProperty.call(errorMap, errorName)) return noRetry(errorMap[errorName]);
   if (errorName.endsWith("SdkError")) return noRetry("CursorSdkError");
 
   if (errorName === "ConfigurationError") {
     if (msgLower.includes("repository_required") || msgLower.includes("repository is required")) {
-      return noRetry("ConfigurationError: Repository is required. Set CURSOR_REPO_URL or ensure git remote is configured.");
+      return noRetry(`ConfigurationError: ${CONFIG_ERROR_MESSAGES.REPOSITORY_REQUIRED}`);
     }
     if (msgLower.includes("failed to verify existence of branch")) {
-      return noRetry("ConfigurationError: Branch verification failed. Please ensure your GitHub account is connected at https://cursor.com/settings and has access to the repository. (Note: Bitbucket/GitLab may not be fully supported by Cursor's cloud agents; consider using a dummy GitHub URL as a workaround)");
+      return noRetry(`ConfigurationError: ${CONFIG_ERROR_MESSAGES.BRANCH_VERIFICATION_FAILED}`);
     }
     return noRetry("ConfigurationError");
   }
 
   return noRetry("unknown");
 }
+
+export const CONFIG_ERROR_MESSAGES = {
+  REPOSITORY_REQUIRED: "Repository is required. Set CURSOR_REPO_URL or ensure git remote is configured.",
+  BRANCH_VERIFICATION_FAILED: "Branch verification failed. Please ensure your GitHub account is connected at https://cursor.com/settings and has access to the repository. (Note: Bitbucket/GitLab may not be fully supported by Cursor's cloud agents; consider using a dummy GitHub URL as a workaround)",
+} as const;
 
 export function logError(log: Logger, err: unknown, context: Record<string, unknown>): void {
   const errorType = err instanceof Error ? getErrorName(err) : typeof err;

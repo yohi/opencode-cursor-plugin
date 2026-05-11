@@ -45,11 +45,11 @@ export function createProviderHook(deps: {
       const dynamicModels = apiKey ? await listModelsWithTimeout(apiKey, log) : null;
       const sourceModels = dynamicModels ?? STATIC_FALLBACK_MODELS;
 
-      const result: Record<string, any> = {};
+      const result: Record<string, unknown> = Object.create(null);
       for (const rawModel of sourceModels) {
         // SDK は id または modelId を返す可能性があるため、両方を確認する
         const id = rawModel.id ?? (rawModel as any).modelId;
-        if (!id) continue;
+        if (!id || typeof id !== "string") continue;
 
         const meta = makeModelMeta({
           ...rawModel,
@@ -93,6 +93,28 @@ export function createProviderHook(deps: {
   };
 }
 
+async function getValidCursorModels(apiKey: string | undefined, log: Logger): Promise<Set<string>> {
+  const allowedFromEnv = process.env.CURSOR_ALLOWED_MODELS;
+  const envModels = allowedFromEnv ? new Set(allowedFromEnv.split(",").map(m => m.trim()).filter(Boolean)) : new Set<string>();
+
+  let sdkModels: FallbackModel[] | null = null;
+  if (apiKey) {
+    sdkModels = await listModelsWithTimeout(apiKey, log);
+  }
+
+  const validSet = new Set<string>(envModels);
+  if (sdkModels) {
+    for (const m of sdkModels) validSet.add(m.id);
+  }
+
+  // If both empty, fallback to static list
+  if (validSet.size === 0) {
+    for (const m of STATIC_FALLBACK_MODELS) validSet.add(m.id);
+  }
+
+  return validSet;
+}
+
 async function runDoStream(opts: {
   args: { prompt: LanguageModelV2Prompt; abortSignal?: AbortSignal; chatParams?: unknown };
   modelId: string;
@@ -104,11 +126,15 @@ async function runDoStream(opts: {
   const { args, apiKey, log, pool, warnState } = opts;
   let { modelId } = opts;
 
-  // Map simulated/unknown models to a known valid Cursor model
-  const validCursorModels = ["composer-2", "claude-3-5-sonnet-20241022", "gpt-4o", "claude-3-opus", "gpt-4-turbo"];
-  if (!validCursorModels.includes(modelId)) {
-    log.warn("cursor-provider: mapping unknown model to composer-2", { originalModel: modelId });
-    modelId = "composer-2";
+  const validSet = await getValidCursorModels(apiKey, log);
+  if (!validSet.has(modelId)) {
+    // Only remap if we have a fallback, otherwise proceed but warn
+    if (validSet.has("composer-2")) {
+      log.warn("cursor-provider: mapping unknown model to composer-2", { originalModel: modelId });
+      modelId = "composer-2";
+    } else {
+      log.warn("cursor-provider: proceeding with unknown model (no fallback found)", { modelId });
+    }
   }
 
   if (!apiKey) {
@@ -189,7 +215,7 @@ async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log
   const maxRetries = 3;
   let attempt = 0;
 
-  while (true) {
+  while (attempt < maxRetries) {
     attempt++;
     try {
       log.debug("cursor-provider: calling Agent.create (local mode)", { modelId });
@@ -201,15 +227,16 @@ async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log
     } catch (err) {
       const decision = classifyError(err, { phase: "create" });
       const canRetry = attempt < maxRetries && decision.retry;
+      const errObj = err as Record<string, unknown>;
 
-      log.error(`cursor-provider: Agent.create failed (attempt ${attempt}/${maxRetries})`, {
-        modelId,
-        apiKeyFingerprint: fingerprintApiKey(apiKey),
-        error: err instanceof Error ? err.message : String(err),
-        details: (err as any).details,
-        retry: canRetry,
+      logError(log, err, {
+        phase: "create",
+        model: modelId,
+        attempt,
+        maxRetries,
+        canRetry,
+        details: errObj?.details,
       });
-      logError(log, err, { phase: "create", model: modelId });
 
       if (!canRetry) throw err;
 
@@ -219,4 +246,6 @@ async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log
       await new Promise((resolve) => setTimeout(resolve, backoffDelay));
     }
   }
+  // This part should technically not be reached if maxRetries > 0 and throw err is called above
+  throw new Error("Agent creation failed after max retries");
 }

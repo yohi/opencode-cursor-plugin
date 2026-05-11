@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import type { SDKAgent, Run as SDKRun } from "@cursor/sdk";
+import type { SDKAgent } from "@cursor/sdk";
 import type { Logger } from "./logger.js";
 import { STATIC_FALLBACK_MODELS } from "./models.js";
 import { translate, type LanguageModelV2Prompt } from "./translator.js";
@@ -7,6 +7,16 @@ import type { AgentPool } from "./agent-pool.js";
 import { fingerprintApiKey } from "./agent-pool.js";
 import { disposeAgentSafely } from "./agent-cleanup.js";
 import { classifyError, logError } from "./errors.js";
+
+function extractErrorInfo(err: unknown): { name: string; code?: string | number; message: string; details?: unknown } {
+  const errObj = err as Record<string, unknown>;
+  return {
+    name: typeof errObj?.name === "string" ? errObj.name : "UnknownError",
+    code: typeof errObj?.code === "string" || typeof errObj?.code === "number" ? errObj.code : undefined,
+    message: err instanceof Error ? err.message : String(err),
+    details: errObj?.details,
+  };
+}
 
 type ProxyServer = {
   baseURL: string;
@@ -107,7 +117,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
   let modelId = body.model.startsWith("cursor/") ? body.model.slice("cursor/".length) : body.model;
   
   // Map simulated/unknown models to a known valid Cursor model to avoid invalid_argument errors from the real backend
-  const validCursorModels = ["composer-2", "claude-3-5-sonnet-20241022", "gpt-4o", "claude-3-opus", "gpt-4-turbo"];
+  const validCursorModels = STATIC_FALLBACK_MODELS.map((m) => m.id);
   if (!validCursorModels.includes(modelId)) {
     log.warn("cursor-openai-proxy: mapping unknown model to composer-2", { originalModel: modelId });
     modelId = "composer-2";
@@ -141,10 +151,11 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
   } else {
     const maxRetries = 3;
     let attempt = 0;
-    while (true) {
+    const { Agent } = (await import("@cursor/sdk")) as { Agent: typeof import("@cursor/sdk").Agent };
+
+    while (attempt < maxRetries) {
       attempt++;
       try {
-        const { Agent } = (await import("@cursor/sdk")) as { Agent: typeof import("@cursor/sdk").Agent };
         log.debug("cursor-openai-proxy: calling Agent.create (local mode)", { modelId });
 
         agent = await Agent.create({
@@ -157,27 +168,25 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
       } catch (err: unknown) {
         const decision = classifyError(err, { phase: "create" });
         const canRetry = attempt < maxRetries && decision.retry;
+        const info = extractErrorInfo(err);
 
-        const errObj = err as Record<string, unknown>;
-        const errName = (typeof errObj?.name === "string" ? errObj.name : "UnknownError");
-        const errCode = (typeof errObj?.code === "string" || typeof errObj?.code === "number" ? errObj.code : undefined);
-        const errMessage = err instanceof Error ? err.message : String(err);
-
-        log.error(`cursor-openai-proxy: Agent creation failed (attempt ${attempt}/${maxRetries})`, {
-          modelId,
-          errorName: errName,
-          errorCode: errCode,
-          message: errMessage,
-          details: errObj?.details,
-          retry: canRetry,
+        logError(log, err, {
+          phase: "create",
+          model: modelId,
+          attempt,
+          maxRetries,
+          canRetry,
+          errName: info.name,
+          errCode: info.code,
+          errMessage: info.message,
+          details: info.details,
         });
-        logError(log, err, { phase: "create", model: modelId });
 
         if (!canRetry) {
           if (!res.headersSent) {
             sendJson(res, 500, {
               error: {
-                message: `Cursor Agent creation failed: [${errName}${errCode ? `:${errCode}` : ""}] ${errMessage} | Details: ${JSON.stringify(errObj?.details || {})}`,
+                message: `Cursor Agent creation failed: [${info.name}${info.code ? `:${info.code}` : ""}] ${info.message} | Details: ${JSON.stringify(info.details || {})}`,
                 type: "server_error",
               },
             });
@@ -225,19 +234,16 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
         sendJson(res, 500, { error: { message: `Cursor run failed with status: ${result.status}` } });
       }
     } catch (err: unknown) {
-      const errObj = err as Record<string, unknown>;
-      const errName = (typeof errObj?.name === "string" ? errObj.name : "UnknownError");
-      const errCode = (typeof errObj?.code === "string" || typeof errObj?.code === "number" ? errObj.code : undefined);
-      const errMessage = err instanceof Error ? err.message : String(err);
+      const info = extractErrorInfo(err);
 
       log.error("cursor-openai-proxy: handleChat non-streaming error", { 
-        errorName: errName,
-        errorCode: errCode,
-        message: errMessage 
+        errorName: info.name,
+        errorCode: info.code,
+        message: info.message 
       });
       await disposeAgentSafely(agent, log);
       if (!res.headersSent) {
-        sendJson(res, 500, { error: { message: `Cursor execution error: [${errName}${errCode ? `:${errCode}` : ''}] ${errMessage}` } });
+        sendJson(res, 500, { error: { message: `Cursor execution error: [${info.name}${info.code ? `:${info.code}` : ''}] ${info.message}` } });
       }
     }
     return;
@@ -290,21 +296,18 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
     }
     res.end();
   } catch (err: unknown) {
-    const errObj = err as Record<string, unknown>;
-    const errName = (typeof errObj?.name === "string" ? errObj.name : "UnknownError");
-    const errCode = (typeof errObj?.code === "string" || typeof errObj?.code === "number" ? errObj.code : undefined);
-    const errMessage = err instanceof Error ? err.message : String(err);
+    const info = extractErrorInfo(err);
 
     log.error("cursor-openai-proxy: handleChat caught an error", { 
-      errorName: errName,
-      errorCode: errCode,
-      message: errMessage 
+      errorName: info.name,
+      errorCode: info.code,
+      message: info.message 
     });
     await disposeAgentSafely(agent, log);
     if (res.headersSent) {
-      res.write(`data: ${JSON.stringify({ error: { message: `Cursor execution error: [${errName}${errCode ? `:${errCode}` : ''}] ${errMessage}` } })}\n\n`);
+      res.write(`data: ${JSON.stringify({ error: { message: `Cursor execution error: [${info.name}${info.code ? `:${info.code}` : ''}] ${info.message}` } })}\n\n`);
     } else {
-      sendJson(res, 500, { error: { message: `Cursor execution error: [${errName}${errCode ? `:${errCode}` : ''}] ${errMessage}` } });
+      sendJson(res, 500, { error: { message: `Cursor execution error: [${info.name}${info.code ? `:${info.code}` : ''}] ${info.message}` } });
     }
     res.end();
   }

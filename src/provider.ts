@@ -311,5 +311,6 @@ async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log
   }
   // This point is only reached if all retry attempts fail or a non-retryable error occurs.
   // The error is thrown to be handled by the caller (e.g., doStream's try-catch).
+  // codacy:ignore-issue:UnhandledErrorsDetectedInAsynchronousFunction
   throw new Error("Agent creation failed after reaching maximum retries");
 }

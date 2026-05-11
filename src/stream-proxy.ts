@@ -218,6 +218,7 @@ export function createStream(input: StreamProxyInput): {
             let currentErr = err;
 
             while (attempt <= maxRetries) {
+              // biome-ignore lint/complexity/noUselessCondition: signal.aborted is changed by event listener
               if (internalAbort.signal.aborted) break;
 
               const retryDecision = classifyError(currentErr, { phase });
@@ -228,6 +229,7 @@ export function createStream(input: StreamProxyInput): {
               log.info(`stream-proxy: retrying (attempt ${attempt}/${maxRetries}) in ${backoffDelay}ms...`);
               await new Promise((resolve) => setTimeout(resolve, backoffDelay));
               
+              // biome-ignore lint/complexity/noUselessCondition: signal.aborted is changed by event listener
               if (internalAbort.signal.aborted) break;
 
               try {
@@ -244,6 +246,7 @@ export function createStream(input: StreamProxyInput): {
             }
 
             const isAborted = internalAbort.signal.aborted;
+            // biome-ignore lint/complexity/noUselessCondition: isAborted is dynamic
             if (!isAborted) {
               captureErrorType(currentErr);
               safeEnqueue({ type: "error", error: { message: currentErr instanceof Error ? currentErr.message : String(currentErr) } });

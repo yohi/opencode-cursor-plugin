@@ -30,7 +30,7 @@
 
 ### 1.2 直近のクラッシュ修正履歴（参考）
 
-```
+```text
 081f9c6 fix: use cloud agent execution to prevent native module segfaults
 876ead0 fix(sdk): Bun でのクラッシュ回避のため Agent.create から cloud: {} を削除し、再試行ロジックを強化
 9f50b9c fix(provider): Bun 環境でタイマー関数が正しく動作しない問題を修正
@@ -63,7 +63,7 @@ a877f4c fix: pin @cursor/sdk to 1.0.10 to prevent sqlite3 segfault in Bun
 
 ### 3.1 変更対象ファイル一覧
 
-```
+```text
 modified:
   .devcontainer/Dockerfile              base image: typescript-node → javascript-node:20
   .devcontainer/devcontainer.json       postCreateCommand 強化、extensions/settings の整理
@@ -94,7 +94,7 @@ test updates (minimal):
 
 したがって呼び出し側責務として「アクティブな Promise の解決を待つ」ことを徹底すれば、`disposeAgentSafely` 自体は agent の状態を内省する必要はない。
 
-```
+```text
 [呼び出し側で agent.send / run.wait の解決を await 済み]
   └─> disposeAgentSafely(agent)
         └─> callAsyncDispose(agent)            ← 1 回目
@@ -171,6 +171,9 @@ RUN corepack enable \
 USER node
 ```
 
+> [!NOTE]
+> Dockerfile 内の pnpm バージョンは、必ず `package.json` の `packageManager` フィールドと一致させてください。
+
 **devcontainer.json:**
 
 ```jsonc
@@ -180,7 +183,7 @@ USER node
   "remoteEnv": {
     "CURSOR_API_KEY": "${localEnv:CURSOR_API_KEY}"
   },
-  "postCreateCommand": "node -e \"if(!/^v(20|21|22)\\./.test(process.version)){process.exit(1)}\" && pnpm install --frozen-lockfile",
+  "postCreateCommand": "node -e \"if(parseInt(process.versions.node) < 20){process.exit(1)}\" && pnpm install --frozen-lockfile",
   "customizations": {
     "vscode": {
       "extensions": ["biomejs.biome", "vitest.explorer"],
@@ -286,7 +289,12 @@ export async function disposeAgentSafely(agent: SDKAgent, log: Logger): Promise<
     });
     try {
       await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
-      await callAsyncDispose(agent);
+      const retryResult = await callAsyncDispose(agent);
+      if (retryResult === "timeout") {
+        log.warn("cursor-provider: agent dispose retry timed out; native lock remains a risk", {
+          timeoutMs: DISPOSE_TIMEOUT_MS,
+        });
+      }
     } catch (retryErr) {
       log.warn("cursor-provider: agent dispose retry failed; suppressing to prevent process crash", {
         errorType: retryErr instanceof Error ? retryErr.constructor.name : typeof retryErr,

@@ -144,9 +144,6 @@ function createLanguageModel(deps: {
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         log.error("cursor-provider: doStream threw an error", { message });
-
-        // Instead of returning a stream with an error object, which might crash opencode core if it expects a specific format,
-        // we return a rejected promise so that the Provider framework handles the rejection natively.
         return Promise.reject(new Error(`Cursor Provider Error: ${message}`));
       }
     },
@@ -173,7 +170,6 @@ async function getValidCursorModels(apiKey: string | undefined, log: Logger): Pr
     for (const m of sdkModels) validSet.add(m.id);
   }
 
-  // If both empty, fallback to static list
   if (validSet.size === 0) {
     for (const m of STATIC_FALLBACK_MODELS) validSet.add(m.id);
   }
@@ -193,6 +189,69 @@ function validateAndMapModel(modelId: string, validSet: Set<string>, log: Logger
   return modelId;
 }
 
+/**
+ * Handles the logic after a stream has finished, including pooling or disposing the agent.
+ */
+async function handleStreamFinish(deps: {
+  finishReason: string;
+  errorType?: string;
+  agent: SDKAgent;
+  pool: AgentPool;
+  nextHash: string;
+  modelId: string;
+  apiKeyFingerprint: string;
+  log: Logger;
+}) {
+  const { finishReason, errorType, agent, pool, nextHash, modelId, apiKeyFingerprint, log } = deps;
+
+  if (finishReason === "stop") {
+    await pool.put(nextHash, {
+      agent,
+      lastUsedAt: Date.now(),
+      modelId,
+      apiKeyFingerprint,
+    });
+    return;
+  }
+
+  if (errorType) {
+    log.debug("cursor-provider: stream ended with errorType", { errorType });
+  }
+
+  await disposeAgentSafely(agent, log);
+}
+
+/**
+ * Resolves which agent to use (pooled vs new) and the message to send.
+ */
+async function resolveAgentAndMessage(deps: {
+  apiKey: string;
+  modelId: string;
+  translated: ReturnType<typeof translate>;
+  pool: AgentPool;
+  log: Logger;
+}): Promise<{ agent: SDKAgent; message: string; isHit: boolean }> {
+  const { apiKey, modelId, translated, pool, log } = deps;
+  const hit = pool.tryGet(translated.prefixHash, modelId, apiKey);
+
+  if (hit) {
+    log.debug("cursor-provider: pool hit", { prefixHash: translated.prefixHash.slice(0, 8) });
+    return {
+      agent: hit.agent as SDKAgent,
+      message: translated.latestUserMessage,
+      isHit: true,
+    };
+  }
+
+  log.debug("cursor-provider: pool miss", { prefixHash: translated.prefixHash.slice(0, 8) });
+  const agent = await createAgentWithRetry({ apiKey, modelId, log });
+  return {
+    agent,
+    message: translated.fullPromptOnMiss,
+    isHit: false,
+  };
+}
+
 async function runDoStream(opts: {
   args: { prompt: ModelV2Prompt; abortSignal?: AbortSignal; chatParams?: unknown };
   modelId: string;
@@ -209,104 +268,85 @@ async function runDoStream(opts: {
 
   if (!apiKey) {
     log.error("cursor-provider: doStream invoked without API key");
-    return Promise.reject(new Error("Cursor API key is not set; run 'opencode auth login cursor' or export CURSOR_API_KEY"));
+    return Promise.reject(new Error("Cursor API key is not set"));
   }
 
   if (!warnState.hasWarned() && args.chatParams && Object.keys(args.chatParams as Record<string, unknown>).length > 0) {
     warnState.markWarned();
-    log.warn("cursor-provider: chat.params not supported by Cursor SDK; ignored", {
-      paramKeys: Object.keys(args.chatParams as Record<string, unknown>),
-    });
+    log.warn("cursor-provider: chat.params ignored", { paramKeys: Object.keys(args.chatParams as Record<string, unknown>) });
   }
 
   const translated = translate(args.prompt);
-  const fingerprint = fingerprintApiKey(apiKey);
-  const hit = pool.tryGet(translated.prefixHash, modelId, apiKey);
-  let agent: SDKAgent;
-  let messageToSend: string;
-
-  if (hit) {
-    agent = hit.agent as SDKAgent;
-    messageToSend = translated.latestUserMessage;
-    log.debug("cursor-provider: pool hit", { prefixHash: translated.prefixHash.slice(0, 8) });
-  } else {
-    agent = await createAgentWithRetry({ apiKey, modelId, log });
-    messageToSend = translated.fullPromptOnMiss;
-    log.debug("cursor-provider: pool miss", { prefixHash: translated.prefixHash.slice(0, 8) });
-  }
+  const { agent, message, isHit } = await resolveAgentAndMessage({ apiKey, modelId, translated, pool, log });
 
   let replacedAgent: SDKAgent | undefined;
-  const recreateAgent = hit
+  const recreateAgent = isHit
     ? async () => {
         await disposeAgentSafely(agent, log);
-        const fresh = await createAgentWithRetry({ apiKey, modelId, log });
-        replacedAgent = fresh;
-        return { agent: fresh, message: translated.fullPromptOnMiss };
+        replacedAgent = await createAgentWithRetry({ apiKey, modelId, log });
+        return { agent: replacedAgent, message: translated.fullPromptOnMiss };
       }
     : undefined;
 
-  const { stream, done } = createStream({
-    agent,
-    message: messageToSend,
-    log,
-    abortSignal: args.abortSignal,
-    recreateAgent,
-  });
+  const { stream, done } = createStream({ agent, message, log, abortSignal: args.abortSignal, recreateAgent });
 
   void done
-    .then(async ({ finishReason, errorType }) => {
-      const finalAgent = replacedAgent || agent;
-      if (finishReason === "stop") {
-        await pool.put(translated.nextHash, {
-          agent: finalAgent,
-          lastUsedAt: Date.now(),
-          modelId,
-          apiKeyFingerprint: fingerprint,
-        });
-        return;
-      }
-
-      if (errorType) {
-        log.debug("cursor-provider: stream ended with errorType", { errorType });
-      }
-
-      await disposeAgentSafely(finalAgent, log);
-    })
-    .catch((err) => {
-      logError(log, err, { phase: "post-stream" });
-    });
+    .then((res) =>
+      handleStreamFinish({
+        ...res,
+        agent: replacedAgent || agent,
+        pool,
+        nextHash: translated.nextHash,
+        modelId,
+        apiKeyFingerprint: fingerprintApiKey(apiKey),
+        log,
+      }),
+    )
+    .catch((err) => logError(log, err, { phase: "post-stream" }));
 
   return { stream };
 }
 
+/**
+ * Single attempt to create an agent with error classification and logging.
+ */
+async function performAgentCreationAttempt(deps: {
+  Agent: any;
+  apiKey: string;
+  modelId: string;
+  log: Logger;
+  attempt: number;
+}): Promise<{ agent: SDKAgent } | { error: any; canRetry: boolean; delay: number }> {
+  const { Agent, apiKey, modelId, log, attempt } = deps;
+  try {
+    log.debug("cursor-provider: calling Agent.create", { modelId, attempt });
+    const agent = (await Agent.create({ apiKey, model: { id: modelId } })) as SDKAgent;
+    return { agent };
+  } catch (err) {
+    const decision = classifyError(err, { phase: "create" });
+    const canRetry = attempt < 3 && decision.retry;
+    logError(log, err, { phase: "create", model: modelId, attempt, maxRetries: 3, canRetry });
+
+    return {
+      error: err,
+      canRetry,
+      delay: decision.delayMs * Math.pow(2, attempt - 1),
+    };
+  }
+}
+
 async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log: Logger }): Promise<SDKAgent> {
   const { Agent } = await import("@cursor/sdk");
-  const { apiKey, modelId, log } = deps;
+  const { log } = deps;
 
   for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      log.debug("cursor-provider: calling Agent.create (local mode)", { modelId });
-      return (await Agent.create({ apiKey, model: { id: modelId } })) as SDKAgent;
-    } catch (err) {
-      const decision = classifyError(err, { phase: "create" });
-      const canRetry = attempt < 3 && decision.retry;
-      const errObj = (typeof err === "object" && err !== null) ? (err as Record<string, unknown>) : {};
+    const result = await performAgentCreationAttempt({ Agent, ...deps, attempt });
 
-      logError(log, err, {
-        phase: "create",
-        model: modelId,
-        attempt,
-        maxRetries: 3,
-        canRetry,
-        details: errObj.details,
-      });
+    if ("agent" in result) return result.agent;
+    if (!result.canRetry) return Promise.reject(result.error);
 
-      if (!canRetry) return Promise.reject(err);
-
-      const backoffDelay = decision.delayMs * Math.pow(2, attempt - 1);
-      log.info(`cursor-provider: retrying in ${backoffDelay}ms...`);
-      await setTimeout(backoffDelay);
-    }
+    log.info(`cursor-provider: retrying in ${result.delay}ms...`);
+    await setTimeout(result.delay);
   }
 
   return Promise.reject(new Error("Agent creation failed after maximum retries"));

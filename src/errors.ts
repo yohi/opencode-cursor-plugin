@@ -67,13 +67,15 @@ export function classifyError(err: unknown, ctx: { phase: RetryPhase }): RetryDe
 
   // Handle specific non-retryable errors
   const errorMap: Record<string, string> = {
-    "AuthenticationError": "AuthenticationError",
-    "IntegrationNotConnectedError": "IntegrationNotConnectedError",
-    "UnknownAgentError": "UnknownAgentError handled by caller",
-    "CursorSdkError": "CursorSdkError",
+    AuthenticationError: "AuthenticationError",
+    IntegrationNotConnectedError: "IntegrationNotConnectedError",
+    UnknownAgentError: "UnknownAgentError handled by caller",
+    CursorSdkError: "CursorSdkError",
   };
 
-  const mapped = errorMap[errorName];
+  const mapped = Object.prototype.hasOwnProperty.call(errorMap, errorName)
+    ? errorMap[errorName]
+    : undefined;
   if (mapped !== undefined) return noRetry(mapped);
   if (errorName.endsWith("SdkError")) return noRetry("CursorSdkError");
 

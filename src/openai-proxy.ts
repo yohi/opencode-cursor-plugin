@@ -9,12 +9,14 @@ import { disposeAgentSafely } from "./agent-cleanup.js";
 import { classifyError, logError } from "./errors.js";
 
 function extractErrorInfo(err: unknown): { name: string; code?: string | number; message: string; details?: unknown } {
-  const errObj = err as Record<string, unknown>;
+  const isObj = typeof err === "object" && err !== null;
+  const errObj = isObj ? (err as Record<string, unknown>) : {};
+  
   return {
-    name: typeof errObj?.name === "string" ? errObj.name : "UnknownError",
-    code: typeof errObj?.code === "string" || typeof errObj?.code === "number" ? errObj.code : undefined,
+    name: typeof errObj.name === "string" ? errObj.name : "UnknownError",
+    code: typeof errObj.code === "string" || typeof errObj.code === "number" ? errObj.code : undefined,
     message: err instanceof Error ? err.message : String(err),
-    details: errObj?.details,
+    details: errObj.details,
   };
 }
 

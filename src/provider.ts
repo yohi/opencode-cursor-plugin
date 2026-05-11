@@ -10,24 +10,37 @@ import { createStream } from "./stream-proxy.js";
 import { translate, type LanguageModelV2Prompt } from "./translator.js";
 
 const MODELS_LIST_TIMEOUT_MS = 10_000;
+type RawSDKModel = {
+  id?: string;
+  modelId?: string;
+  name?: string;
+  displayName?: string;
+  contextWindow?: number;
+  [key: string]: unknown;
+};
+
 async function listModelsWithTimeout(apiKey: string, log: Logger): Promise<FallbackModel[] | null> {
   const { Cursor } = await import("@cursor/sdk");
   let timeoutId: NodeJS.Timeout | undefined;
   try {
     const rawModels = await Promise.race([
-      Cursor.models.list({ apiKey }) as unknown as Promise<FallbackModel[]>,
+      Cursor.models.list({ apiKey }) as unknown as Promise<RawSDKModel[]>,
       new Promise<never>((_, reject) => {
         timeoutId = setTimeout(() => reject(new Error("models.list timeout")), MODELS_LIST_TIMEOUT_MS);
       }),
     ]);
     if (!rawModels) return null;
 
-    return rawModels.map((raw) => ({
-      ...raw,
-      id: raw.id ?? (raw as any).modelId,
-      name: raw.name ?? (raw as any).displayName ?? (raw.id ?? (raw as any).modelId),
-      contextWindow: raw.contextWindow ?? 200_000,
-    }));
+    return rawModels.map((raw) => {
+      const id = raw.id ?? raw.modelId;
+      const name = raw.name ?? raw.displayName ?? id;
+      return {
+        ...raw,
+        id: id ?? "unknown",
+        name: name ?? "Unknown Model",
+        contextWindow: raw.contextWindow ?? 200_000,
+      } as FallbackModel;
+    });
   } catch (err) {
     log.warn("cursor-provider: models.list failed; using static fallback", {
       errorType: err instanceof Error ? err.constructor.name : typeof err,
@@ -55,15 +68,14 @@ export function createProviderHook(deps: {
 
       const result: Record<string, any> = Object.create(null);
       for (const rawModel of sourceModels) {
-        // SDK は id または modelId を返す可能性があるため、両方を確認する
-        const id = rawModel.id ?? (rawModel as any).modelId;
-        if (!id || typeof id !== "string") continue;
+        const id = rawModel.id;
+        if (!id) continue;
 
         const meta = makeModelMeta({
           ...rawModel,
           id,
-          name: rawModel.name ?? (rawModel as any).displayName ?? id,
-          contextWindow: rawModel.contextWindow ?? 200_000,
+          name: rawModel.name,
+          contextWindow: rawModel.contextWindow,
         });
 
         result[id] = {
@@ -235,7 +247,7 @@ async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log
     } catch (err) {
       const decision = classifyError(err, { phase: "create" });
       const canRetry = attempt < maxRetries && decision.retry;
-      const errObj = err as Record<string, unknown>;
+      const errObj = (typeof err === "object" && err !== null) ? (err as Record<string, unknown>) : {};
 
       logError(log, err, {
         phase: "create",
@@ -243,7 +255,7 @@ async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log
         attempt,
         maxRetries,
         canRetry,
-        details: errObj?.details,
+        details: errObj.details,
       });
 
       if (!canRetry) throw err;

@@ -157,90 +157,99 @@ export function createStream(input: StreamProxyInput): {
       internalAbort.signal.addEventListener("abort", onAbort);
 
       void (async () => {
-        if (internalAbort.signal.aborted) {
-          internalAbort.signal.removeEventListener("abort", onAbort);
-          abortSignal?.removeEventListener("abort", onExternalAbort);
-          setFinishReason("abort");
-          safeEnqueue({ type: "finish", finishReason: "abort" });
-          safeClose();
-          resolveDone({ finishReason: finishReason ?? "abort" });
-          return;
-        }
-
         try {
-          // @cursor/sdk@1.0.10 の SendOptions には signal がないため、abort は
-          // この proxy 側で downstream を閉じて伝播させる。
-          const run = await agent.send(message, { onDelta });
-          const result = await (run as { wait: () => Promise<{ status: string }> }).wait();
-          handleRunStatus(result);
-        } catch (err) {
-          const phase = hasEmittedDelta ? "in-stream" : "pre-stream";
-          const errName = getErrorName(err);
-
-          if (phase === "pre-stream" && errName === "UnknownAgentError" && recreateAgent && !internalAbort.signal.aborted) {
-            log.warn("stream-proxy: UnknownAgentError; retrying with new agent");
-            let recreated: { agent: SDKAgent; message: string };
-            try {
-              recreated = await recreateAgent();
-              agent = recreated.agent;
-            } catch (retryErr) {
-              captureErrorType(retryErr);
-              logError(log, retryErr, { phase: "create", retry: false });
-              safeEnqueue({ type: "error", error: { message: retryErr instanceof Error ? retryErr.message : String(retryErr) } });
-              safeClose();
-              return;
-            }
-
-            if (internalAbort.signal.aborted) {
-              safeEnqueue({ type: "finish", finishReason: "abort" });
-              safeClose();
-              return;
-            }
-
-            try {
-              const rerun = await agent.send(recreated.message, { onDelta });
-              const result = await (rerun as { wait: () => Promise<{ status: string }> }).wait();
-              handleRunStatus(result);
-            } catch (retryErr) {
-              captureErrorType(retryErr);
-              logError(log, retryErr, { phase: "pre-stream", retry: false });
-              safeEnqueue({ type: "error", error: { message: retryErr instanceof Error ? retryErr.message : String(retryErr) } });
-              safeClose();
-            }
+          if (internalAbort.signal.aborted) {
+            setFinishReason("abort");
+            safeEnqueue({ type: "finish", finishReason: "abort" });
+            safeClose();
             return;
           }
 
-          const decision = classifyError(err, { phase });
-          logError(log, err, { phase, retry: decision.retry });
-          
-          const maxRetries = 3;
-          let attempt = 1; // 最初の失敗を1回目とする
-          let currentErr = err;
+          try {
+            // @cursor/sdk@1.0.10 の SendOptions には signal がないため、abort は
+            // この proxy 側で downstream を閉じて伝播させる。
+            const run = await agent.send(message, { onDelta });
+            const result = await (run as { wait: () => Promise<{ status: string }> }).wait();
+            handleRunStatus(result);
+          } catch (err) {
+            const phase = hasEmittedDelta ? "in-stream" : "pre-stream";
+            const errName = getErrorName(err);
 
-          while (attempt < maxRetries && classifyError(currentErr, { phase }).retry && !internalAbort.signal.aborted) {
-            const currentDecision = classifyError(currentErr, { phase });
-            const backoffDelay = currentDecision.delayMs * Math.pow(2, attempt - 1);
-            
-            log.info(`stream-proxy: retrying (attempt ${attempt + 1}/${maxRetries}) in ${backoffDelay}ms...`);
-            await new Promise((resolve) => setTimeout(resolve, backoffDelay));
-            
-            if (internalAbort.signal.aborted) break;
+            if (phase === "pre-stream" && errName === "UnknownAgentError" && recreateAgent && !internalAbort.signal.aborted) {
+              log.warn("stream-proxy: UnknownAgentError; retrying with new agent");
+              let recreated: { agent: SDKAgent; message: string };
+              try {
+                recreated = await recreateAgent();
+                agent = recreated.agent;
+              } catch (retryErr) {
+                captureErrorType(retryErr);
+                logError(log, retryErr, { phase: "create", retry: false });
+                safeEnqueue({ type: "error", error: { message: retryErr instanceof Error ? retryErr.message : String(retryErr) } });
+                safeClose();
+                return;
+              }
 
-            try {
-              const rerun = await agent.send(message, { onDelta });
-              const result = await (rerun as { wait: () => Promise<{ status: string }> }).wait();
-              handleRunStatus(result);
-              return; // 成功
-            } catch (retryErr) {
-              currentErr = retryErr;
-              attempt++;
-              logError(log, retryErr, { phase, retry: attempt < maxRetries });
+              if (internalAbort.signal.aborted) {
+                safeEnqueue({ type: "finish", finishReason: "abort" });
+                safeClose();
+                return;
+              }
+
+              try {
+                const rerun = await agent.send(recreated.message, { onDelta });
+                const result = await (rerun as { wait: () => Promise<{ status: string }> }).wait();
+                handleRunStatus(result);
+              } catch (retryErr) {
+                captureErrorType(retryErr);
+                logError(log, retryErr, { phase: "pre-stream", retry: false });
+                safeEnqueue({ type: "error", error: { message: retryErr instanceof Error ? retryErr.message : String(retryErr) } });
+                safeClose();
+              }
+              return;
+            }
+
+            const decision = classifyError(err, { phase });
+            logError(log, err, { phase, retry: decision.retry });
+            
+            const maxRetries = 3;
+            let attempt = 1; // 最初の失敗を1回目とする
+            let currentErr = err;
+
+            while (attempt < maxRetries && !internalAbort.signal.aborted) {
+              const retryDecision = classifyError(currentErr, { phase });
+              if (!retryDecision.retry) break;
+
+              const backoffDelay = retryDecision.delayMs * Math.pow(2, attempt - 1);
+              
+              log.info(`stream-proxy: retrying (attempt ${attempt + 1}/${maxRetries}) in ${backoffDelay}ms...`);
+              await new Promise((resolve) => setTimeout(resolve, backoffDelay));
+              
+              if (internalAbort.signal.aborted) break;
+
+              try {
+                const rerun = await agent.send(message, { onDelta });
+                const result = await (rerun as { wait: () => Promise<{ status: string }> }).wait();
+                handleRunStatus(result);
+                return; // 成功
+              } catch (retryErr) {
+                currentErr = retryErr;
+                attempt++;
+                logError(log, retryErr, { phase, retry: attempt < maxRetries });
+              }
+            }
+
+            if (!internalAbort.signal.aborted) {
+              captureErrorType(currentErr);
+              safeEnqueue({ type: "error", error: { message: currentErr instanceof Error ? currentErr.message : String(currentErr) } });
+              safeClose();
             }
           }
-
+        } catch (unexpectedErr) {
+          log.error("stream-proxy: unexpected error in async IIFE", { 
+            error: unexpectedErr instanceof Error ? unexpectedErr.message : String(unexpectedErr) 
+          });
           if (!internalAbort.signal.aborted) {
-            captureErrorType(currentErr);
-            safeEnqueue({ type: "error", error: { message: currentErr instanceof Error ? currentErr.message : String(currentErr) } });
+            safeEnqueue({ type: "error", error: { message: "Unexpected internal error" } });
             safeClose();
           }
         } finally {

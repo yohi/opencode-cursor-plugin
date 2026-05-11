@@ -1,7 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
 
 export async function generatePKCE(): Promise<{ verifier: string; challenge: string }> {
-  const verifier = randomBytes(32)
+  // 96 bytes random value as base64url (matches OSS implementation)
+  const verifier = randomBytes(96)
     .toString("base64")
     .replace(/\+/g, "-")
     .replace(/\//g, "_")

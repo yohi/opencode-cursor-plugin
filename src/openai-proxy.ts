@@ -6,6 +6,7 @@ import { translate, type LanguageModelV2Prompt } from "./translator.js";
 import type { AgentPool } from "./agent-pool.js";
 import { fingerprintApiKey } from "./agent-pool.js";
 import { disposeAgentSafely } from "./agent-cleanup.js";
+import { resolveRepoInfo } from "./git.js";
 
 type ProxyServer = {
   baseURL: string;
@@ -87,14 +88,31 @@ function writeSse(res: ServerResponse, payload: unknown): void {
 }
 
 async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger, pool: AgentPool): Promise<void> {
-  const apiKey = getBearerToken(req) ?? process.env.CURSOR_API_KEY?.trim();
+  const rawToken = getBearerToken(req) ?? process.env.CURSOR_API_KEY?.trim();
+  const apiKey = (rawToken && rawToken !== "undefined" && rawToken !== "null") ? rawToken : undefined;
+
+  log.debug("cursor-openai-proxy: received request", {
+    hasApiKey: !!apiKey,
+    keyLength: apiKey?.length,
+    keyPrefix: apiKey?.slice(0, 7),
+    model: req.method === "POST" ? "checking-body" : "n/a",
+  });
+
   if (!apiKey) {
-    sendJson(res, 401, { error: { message: "Cursor API key is not set" } });
+    sendJson(res, 401, { error: { message: "Cursor API key is not set or invalid" } });
     return;
   }
 
   const body = await readBody(req);
-  const modelId = body.model.startsWith("cursor/") ? body.model.slice("cursor/".length) : body.model;
+  let modelId = body.model.startsWith("cursor/") ? body.model.slice("cursor/".length) : body.model;
+  
+  // Map simulated/unknown models to a known valid Cursor model to avoid invalid_argument errors from the real backend
+  const validCursorModels = ["composer-2", "claude-3-5-sonnet-20241022", "gpt-4o", "claude-3-opus", "gpt-4-turbo"];
+  if (!validCursorModels.includes(modelId)) {
+    log.warn("cursor-openai-proxy: mapping unknown model to composer-2", { originalModel: modelId });
+    modelId = "composer-2";
+  }
+
   const messages = body.messages as LanguageModelV2Prompt;
   
   if (messages.length === 0) {
@@ -121,19 +139,54 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
     messageToSend = translated.latestUserMessage;
     log.debug("cursor-openai-proxy: pool hit", { prefixHash: translated.prefixHash.slice(0, 8) });
   } else {
-    try {
-      const { Agent } = await import("@cursor/sdk");
-      agent = await Agent.create({ apiKey, model: { id: modelId }, cloud: {} }) as SDKAgent;
-      messageToSend = translated.fullPromptOnMiss;
-      log.debug("cursor-openai-proxy: pool miss", { prefixHash: translated.prefixHash.slice(0, 8) });
-    } catch (err) {
-      log.error("cursor-openai-proxy: Agent creation failed", {
-        error: err instanceof Error ? { ...err, message: err.message, stack: err.stack } : err,
-      });
-      if (!res.headersSent) {
-        sendJson(res, 500, { error: { message: "Agent creation failed" } });
+    const maxRetries = 3;
+    let attempt = 0;
+    while (true) {
+      attempt++;
+      try {
+        const { Agent } = await import("@cursor/sdk");
+        log.debug("cursor-openai-proxy: calling Agent.create (local mode)", { modelId });
+
+        agent = (await Agent.create({
+          apiKey,
+          model: { id: modelId },
+        })) as SDKAgent;
+        messageToSend = translated.fullPromptOnMiss;
+        log.debug("cursor-openai-proxy: pool miss", { prefixHash: translated.prefixHash.slice(0, 8) });
+        break;
+      } catch (err) {
+        const errName = (err && typeof err === "object" && "name" in err ? (err as any).name : "UnknownError") as string;
+        const errCode = err && typeof err === "object" && "code" in err ? (err as any).code : undefined;
+        const errMessage = err instanceof Error ? err.message : String(err);
+
+        const isRetryable = errName === "NetworkError" || errName === "RateLimitError" || errName === "ConnectError" || errMessage.toLowerCase().includes("rate limit");
+        const canRetry = attempt < maxRetries && isRetryable;
+
+        log.error(`cursor-openai-proxy: Agent creation failed (attempt ${attempt}/${maxRetries})`, {
+          modelId,
+          errorName: errName,
+          errorCode: errCode,
+          message: errMessage,
+          details: (err as any).details,
+          fullError: JSON.stringify(err, Object.getOwnPropertyNames(err)),
+          retry: canRetry,
+        });
+
+        if (!canRetry) {
+          if (!res.headersSent) {
+            sendJson(res, 500, {
+              error: {
+                message: `Cursor Agent creation failed: [${errName}${errCode ? `:${errCode}` : ""}] ${errMessage} | Details: ${JSON.stringify((err as any).details || {})}`,
+                type: "server_error",
+              },
+            });
+          }
+          return;
+        }
+
+        const delay = (errName === "RateLimitError" ? 2000 : 1000) * Math.pow(2, attempt - 1);
+        await new Promise((resolve) => setTimeout(resolve, delay));
       }
-      return;
     }
   }
 
@@ -148,7 +201,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
         },
       });
 
-      const result = await run.wait();
+      const result = await (run as any).wait();
 
       if (result.status === "finished") {
         await pool.put(translated.nextHash, {
@@ -165,12 +218,23 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
           choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }],
         });
       } else {
+        log.warn("cursor-openai-proxy: run non-finished", { status: result.status });
         await disposeAgentSafely(agent, log);
+        sendJson(res, 500, { error: { message: `Cursor run failed with status: ${result.status}` } });
       }
     } catch (err) {
+      const errName = err && typeof err === 'object' && 'name' in err ? (err as any).name : 'UnknownError';
+      const errCode = err && typeof err === 'object' && 'code' in err ? (err as any).code : undefined;
+      const errMessage = err instanceof Error ? err.message : String(err);
+
+      log.error("cursor-openai-proxy: handleChat non-streaming error", { 
+        errorName: errName,
+        errorCode: errCode,
+        message: errMessage 
+      });
       await disposeAgentSafely(agent, log);
       if (!res.headersSent) {
-        sendJson(res, 500, { error: { message: err instanceof Error ? err.message : String(err) } });
+        sendJson(res, 500, { error: { message: `Cursor execution error: [${errName}${errCode ? `:${errCode}` : ''}] ${errMessage}` } });
       }
     }
     return;
@@ -198,7 +262,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
       },
     });
 
-    const result = await run.wait();
+    const result = await (run as any).wait();
 
     if (result.status === "finished") {
       await pool.put(translated.nextHash, {
@@ -216,17 +280,26 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
       });
       res.write("data: [DONE]\n\n");
     } else {
+      log.warn("cursor-openai-proxy: run non-finished (streaming)", { status: result.status });
       await disposeAgentSafely(agent, log);
+      writeSse(res, { error: { message: `Cursor run failed with status: ${result.status}` } });
     }
     res.end();
   } catch (err) {
-    const errorDetails = err instanceof Error ? { message: err.message, stack: err.stack } : err;
-    log.error("cursor-openai-proxy: handleChat caught an error", { errorDetails });
+    const errName = err && typeof err === 'object' && 'name' in err ? (err as any).name : 'UnknownError';
+    const errCode = err && typeof err === 'object' && 'code' in err ? (err as any).code : undefined;
+    const errMessage = err instanceof Error ? err.message : String(err);
+
+    log.error("cursor-openai-proxy: handleChat caught an error", { 
+      errorName: errName,
+      errorCode: errCode,
+      message: errMessage 
+    });
     await disposeAgentSafely(agent, log);
     if (res.headersSent) {
-      res.write(`data: ${JSON.stringify({ error: { message: err instanceof Error ? err.message : String(err) } })}\n\n`);
+      res.write(`data: ${JSON.stringify({ error: { message: `Cursor execution error: [${errName}${errCode ? `:${errCode}` : ''}] ${errMessage}` } })}\n\n`);
     } else {
-      sendJson(res, 500, { error: { message: err instanceof Error ? err.message : String(err) } });
+      sendJson(res, 500, { error: { message: `Cursor execution error: [${errName}${errCode ? `:${errCode}` : ''}] ${errMessage}` } });
     }
     res.end();
   }

@@ -212,26 +212,36 @@ export function createStream(input: StreamProxyInput): {
 
           const decision = classifyError(err, { phase });
           logError(log, err, { phase, retry: decision.retry });
-          if (!decision.retry) {
-            captureErrorType(err);
-            safeEnqueue({ type: "error", error: { message: err instanceof Error ? err.message : String(err) } });
-            safeClose();
-          } else {
-            await new Promise((resolve) => setTimeout(resolve, decision.delayMs));
-            if (internalAbort.signal.aborted) {
-              safeEnqueue({ type: "finish", finishReason: "abort" });
-              safeClose();
-            } else {
-              try {
-                const rerun = await agent.send(message, { onDelta });
-                const result = await (rerun as { wait: () => Promise<{ status: string }> }).wait();
-                handleRunStatus(result);
-              } catch (retryErr) {
-                captureErrorType(retryErr);
-                safeEnqueue({ type: "error", error: { message: retryErr instanceof Error ? retryErr.message : String(retryErr) } });
-                safeClose();
-              }
+          
+          const maxRetries = 3;
+          let attempt = 1; // 最初の失敗を1回目とする
+          let currentErr = err;
+
+          while (attempt < maxRetries && classifyError(currentErr, { phase }).retry && !internalAbort.signal.aborted) {
+            const currentDecision = classifyError(currentErr, { phase });
+            const backoffDelay = currentDecision.delayMs * Math.pow(2, attempt - 1);
+            
+            log.info(`stream-proxy: retrying (attempt ${attempt + 1}/${maxRetries}) in ${backoffDelay}ms...`);
+            await new Promise((resolve) => setTimeout(resolve, backoffDelay));
+            
+            if (internalAbort.signal.aborted) break;
+
+            try {
+              const rerun = await agent.send(message, { onDelta });
+              const result = await (rerun as { wait: () => Promise<{ status: string }> }).wait();
+              handleRunStatus(result);
+              return; // 成功
+            } catch (retryErr) {
+              currentErr = retryErr;
+              attempt++;
+              logError(log, retryErr, { phase, retry: attempt < maxRetries });
             }
+          }
+
+          if (!internalAbort.signal.aborted) {
+            captureErrorType(currentErr);
+            safeEnqueue({ type: "error", error: { message: currentErr instanceof Error ? currentErr.message : String(currentErr) } });
+            safeClose();
           }
         } finally {
           internalAbort.signal.removeEventListener("abort", onAbort);

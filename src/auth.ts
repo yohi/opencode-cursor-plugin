@@ -72,9 +72,12 @@ export async function resolveAndPersistApiKey(deps: {
       }
     });
     const finalKey = result?.apiKey || normalizedEnv;
-    if (log && finalKey) {
-      log.debug("cursor-provider: resolved API key", {
-        source: result?.apiKey ? "saved-auth" : "env",
+    if (log) {
+      log.debug("cursor-provider: resolved API key info", {
+        hasKey: !!finalKey,
+        length: finalKey?.length,
+        prefix: finalKey?.slice(0, 7),
+        source: result?.apiKey ? "saved-auth" : (normalizedEnv ? "env" : "none"),
       });
     }
     return finalKey;
@@ -135,15 +138,16 @@ export const cursorAuthHook: AuthHook = {
   async loader(getAuth, _provider) {
     const auth = await getAuth();
     const result = await getOrRefreshToken(auth);
+    
     if (result) return result;
 
-    const envKey = process.env.CURSOR_API_KEY;
+    const envKey = process.env.CURSOR_API_KEY?.trim();
     return envKey ? { apiKey: envKey } : {};
   },
   methods: [
     {
       type: "oauth",
-      label: "Login with Browser (Recommended)",
+      label: "Login with Browser (Experimental/May not work)",
       async authorize() {
         const { verifier, challenge } = await generatePKCE();
         const uuid = crypto.randomUUID();
@@ -156,7 +160,7 @@ export const cursorAuthHook: AuthHook = {
 
         return {
           url: `${CURSOR_LOGIN_URL}?${params.toString()}`,
-          instructions: "Please complete login in your browser.",
+          instructions: "Please complete login in your browser. NOTE: This session-based login may not work with some models. Manual API Key Entry is RECOMMENDED for stable use.",
           method: "auto",
           async callback() {
             const tokens = await pollCursorAuth(uuid, verifier);
@@ -184,12 +188,15 @@ export const cursorAuthHook: AuthHook = {
   ],
 };
 
+const CURSOR_CLIENT_VERSION = "cli-2026.01.09-231024f";
+
 async function pollCursorAuth(uuid: string, verifier: string) {
   // Validate inputs
   if (!/^[0-9a-f-]{36}$/i.test(uuid)) {
     throw new Error("Invalid UUID format");
   }
-  if (!/^[a-z0-9._~-]{43,128}$/i.test(verifier)) {
+  // Base64URL verifier (approx 128 chars for 96 bytes)
+  if (!/^[a-z0-9._~-]{43,150}$/i.test(verifier)) {
     throw new Error("Invalid verifier format");
   }
 
@@ -231,14 +238,21 @@ async function refreshCursorToken(refreshToken: string) {
   try {
     const res = await fetch(CURSOR_REFRESH_URL, {
       method: "POST",
-      headers: { Authorization: `Bearer ${refreshToken}` },
+      headers: { 
+        Authorization: `Bearer ${refreshToken}`,
+        "Content-Type": "application/json",
+      },
+      body: "{}",
       signal: controller.signal,
     });
-    if (!res.ok) throw new Error("Token refresh failed.");
+    if (!res.ok) {
+      const body = await res.text().catch(() => "no-body");
+      throw new Error(`status=${res.status} body=${body}`);
+    }
     return (await res.json()) as { accessToken: string; refreshToken: string };
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
-      throw new Error(`Token refresh timed out after ${CURSOR_REQUEST_TIMEOUT}ms`);
+      throw new Error(`timed out after ${CURSOR_REQUEST_TIMEOUT}ms`);
     }
     throw err;
   } finally {
@@ -251,7 +265,11 @@ export function getTokenExpiry(token: string): number {
     const parts = token.split(".");
     const part1 = parts[1];
     if (!part1) return Date.now() + 3600 * 1000;
-    const payload = JSON.parse(Buffer.from(part1, "base64").toString());
+    
+    // Base64URL -> Base64
+    const base64 = part1.replace(/-/g, "+").replace(/_/g, "/");
+    const payload = JSON.parse(Buffer.from(base64, "base64").toString());
+    
     if (typeof payload !== "object" || payload === null || typeof payload.exp !== "number") {
       return Date.now() + 3600 * 1000;
     }

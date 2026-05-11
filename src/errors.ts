@@ -36,11 +36,23 @@ export function getErrorName(err: unknown): string {
  */
 export function classifyError(err: unknown, ctx: { phase: RetryPhase }): RetryDecision {
   const errorName = getErrorName(err);
+  const errorMessage = err instanceof Error ? err.message : String(err);
+  const isRateLimit = errorName === "RateLimitError" || 
+                     errorName === "ResourceExhausted" || 
+                     errorMessage.toLowerCase().includes("rate limit");
 
-  if (errorName === "NetworkError") {
+  const isNetwork = errorName === "NetworkError" || 
+                    errorName === "ConnectError" || 
+                    errorName === "Unavailable" || 
+                    errorName === "DeadlineExceeded" ||
+                    errorMessage.toLowerCase().includes("network error") ||
+                    errorMessage.toLowerCase().includes("timeout") ||
+                    errorMessage.toLowerCase().includes("timed out");
+
+  if (isNetwork) {
     // We consider any NetworkError retryable in early phases (pre-delivery).
     if (ctx.phase === "create" || ctx.phase === "pre-stream") {
-      return { retry: true, delayMs: 500, reason: "NetworkError safe to retry pre-delivery" };
+      return { retry: true, delayMs: 1000, reason: "NetworkError safe to retry pre-delivery" };
     }
 
     // In later phases, we NEVER retry to avoid duplicating stream parts, 
@@ -48,9 +60,7 @@ export function classifyError(err: unknown, ctx: { phase: RetryPhase }): RetryDe
     return noRetry("NetworkError after delivery would duplicate stream");
   }
 
-  if (errorName === "AuthenticationError") return noRetry("AuthenticationError");
-  if (errorName === "ConfigurationError") return noRetry("ConfigurationError");
-  if (errorName === "RateLimitError") {
+  if (isRateLimit) {
     // Mirror the same phase check applied to "NetworkError"
     if (ctx.phase === "create" || ctx.phase === "pre-stream") {
       return { retry: true, delayMs: 2000, reason: "RateLimitError with backoff" };
@@ -58,6 +68,16 @@ export function classifyError(err: unknown, ctx: { phase: RetryPhase }): RetryDe
     return noRetry("RateLimitError after delivery would duplicate stream");
   }
 
+  if (errorName === "AuthenticationError") return noRetry("AuthenticationError");
+  if (errorName === "ConfigurationError") {
+    if (errorMessage.includes("repository_required") || errorMessage.includes("Repository is required")) {
+      return noRetry("ConfigurationError: Repository is required. Set CURSOR_REPO_URL or ensure git remote is configured.");
+    }
+    if (errorMessage.includes("Failed to verify existence of branch")) {
+      return noRetry("ConfigurationError: Branch verification failed. Please ensure your GitHub account is connected at https://cursor.com/settings and has access to the repository. (Note: Bitbucket/GitLab may not be fully supported by Cursor's cloud agents; consider using a dummy GitHub URL as a workaround)");
+    }
+    return noRetry("ConfigurationError");
+  }
   if (errorName === "IntegrationNotConnectedError") return noRetry("IntegrationNotConnectedError");
   if (errorName === "UnknownAgentError") return noRetry("UnknownAgentError handled by caller");
   if (errorName === "CursorSdkError" || errorName.endsWith("SdkError")) return noRetry("CursorSdkError");

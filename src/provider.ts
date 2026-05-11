@@ -8,6 +8,7 @@ import type { Logger } from "./logger.js";
 import { STATIC_FALLBACK_MODELS, makeModelMeta, type FallbackModel } from "./models.js";
 import { createStream } from "./stream-proxy.js";
 import { translate, type LanguageModelV2Prompt } from "./translator.js";
+import { resolveRepoInfo } from "./git.js";
 
 const MODELS_LIST_TIMEOUT_MS = 10_000;
 async function listModelsWithTimeout(apiKey: string, log: Logger): Promise<FallbackModel[] | null> {
@@ -46,21 +47,26 @@ export function createProviderHook(deps: {
       const sourceModels = dynamicModels ?? STATIC_FALLBACK_MODELS;
 
       const result: Record<string, any> = {};
-      for (const model of sourceModels) {
+      for (const rawModel of sourceModels) {
+        // SDK は id または modelId を返す可能性があるため、両方を確認する
+        const id = rawModel.id ?? (rawModel as any).modelId;
+        if (!id) continue;
+
         const meta = makeModelMeta({
-          id: model.id,
-          name: model.name ?? model.id,
-          contextWindow: model.contextWindow ?? 200_000,
+          ...rawModel,
+          id,
+          name: rawModel.name ?? (rawModel as any).displayName ?? id,
+          contextWindow: rawModel.contextWindow ?? 200_000,
         });
 
-        result[model.id] = {
+        result[id] = {
           ...meta,
           async doStream(args: { prompt: LanguageModelV2Prompt; abortSignal?: AbortSignal; chatParams?: unknown }) {
             try {
               const currentApiKey = await resolveApiKey(ctx, log);
               return await runDoStream({
                 args,
-                modelId: model.id,
+                modelId: id,
                 apiKey: currentApiKey,
                 log,
                 pool,
@@ -96,7 +102,16 @@ async function runDoStream(opts: {
   pool: AgentPool;
   warnState: { hasWarned: () => boolean; markWarned: () => void };
 }) {
-  const { args, modelId, apiKey, log, pool, warnState } = opts;
+  const { args, apiKey, log, pool, warnState } = opts;
+  let { modelId } = opts;
+
+  // Map simulated/unknown models to a known valid Cursor model
+  const validCursorModels = ["composer-2", "claude-3-5-sonnet-20241022", "gpt-4o", "claude-3-opus", "gpt-4-turbo"];
+  if (!validCursorModels.includes(modelId)) {
+    log.warn("cursor-provider: mapping unknown model to composer-2", { originalModel: modelId });
+    modelId = "composer-2";
+  }
+
   if (!apiKey) {
     log.error("cursor-provider: doStream invoked without API key");
     throw new Error("Cursor API key is not set; run 'opencode auth login cursor' or export CURSOR_API_KEY");
@@ -172,20 +187,37 @@ async function runDoStream(opts: {
 async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log: Logger }): Promise<SDKAgent> {
   const { Agent } = await import("@cursor/sdk");
   const { apiKey, modelId, log } = deps;
-  try {
-    return await Agent.create({ apiKey, model: { id: modelId }, cloud: {} }) as SDKAgent;
-  } catch (err) {
-    log.error("cursor-provider: Agent.create failed", {
-      modelId,
-      apiKeyFingerprint: fingerprintApiKey(apiKey),
-      error: err instanceof Error ? err.message : String(err),
-      stack: err instanceof Error ? err.stack : undefined,
-    });
-    const decision = classifyError(err, { phase: "create" });
-    logError(log, err, { phase: "create", retry: decision.retry });
-    if (!decision.retry) throw err;
+  const maxRetries = 3;
+  let attempt = 0;
 
-    await new Promise((resolve) => setTimeout(resolve, decision.delayMs));
-    return await Agent.create({ apiKey, model: { id: modelId }, cloud: {} }) as SDKAgent;
+  while (true) {
+    attempt++;
+    try {
+      log.debug("cursor-provider: calling Agent.create (local mode)", { modelId });
+
+      return (await Agent.create({
+        apiKey,
+        model: { id: modelId },
+      })) as SDKAgent;
+    } catch (err) {
+      const decision = classifyError(err, { phase: "create" });
+      const canRetry = attempt < maxRetries && decision.retry;
+
+      log.error(`cursor-provider: Agent.create failed (attempt ${attempt}/${maxRetries})`, {
+        modelId,
+        apiKeyFingerprint: fingerprintApiKey(apiKey),
+        error: err instanceof Error ? err.message : String(err),
+        details: (err as any).details,
+        fullError: JSON.stringify(err, Object.getOwnPropertyNames(err)),
+        retry: canRetry,
+      });
+
+      if (!canRetry) throw err;
+
+      // Exponential backoff: 2s, 4s, 8s... modified by base delayMs
+      const backoffDelay = decision.delayMs * Math.pow(2, attempt - 1);
+      log.info(`cursor-provider: retrying in ${backoffDelay}ms...`);
+      await new Promise((resolve) => setTimeout(resolve, backoffDelay));
+    }
   }
 }

@@ -36,7 +36,9 @@ export function ensureCursorProviderConfig(config: Config, options: { baseURL?: 
     npm: current.npm ?? "@ai-sdk/openai-compatible",
     options: {
       ...currentOptions,
-      ...(currentOptions.baseURL ? {} : { baseURL: options.baseURL ?? "http://127.0.0.1:32125/v1" }),
+      baseURL: options.baseURL ?? currentOptions.baseURL ?? "http://127.0.0.1:32125/v1",
+      repoUrl: currentOptions.repoUrl,
+      repoBranch: currentOptions.repoBranch,
     },
     models: {
       // プロバイダーとして認識させるための最低限の定義

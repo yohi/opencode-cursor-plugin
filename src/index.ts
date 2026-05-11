@@ -34,6 +34,19 @@ const CursorProviderPlugin: Plugin = async (input) => {
 
   return {
     config: async (config: Config) => {
+      // Set CURSOR_REPO_URL from config if present
+      const repoUrl = (config as any).provider?.cursor?.options?.repoUrl;
+      if (repoUrl && typeof repoUrl === "string") {
+        process.env.CURSOR_REPO_URL = repoUrl;
+        log.debug("cursor-provider: repoUrl set from config", { repoUrl });
+      }
+
+      const repoBranch = (config as any).provider?.cursor?.options?.repoBranch;
+      if (repoBranch && typeof repoBranch === "string") {
+        process.env.CURSOR_REPO_BRANCH = repoBranch;
+        log.debug("cursor-provider: repoBranch set from config", { repoBranch });
+      }
+
       ensureCursorProviderConfig(config, { baseURL: proxy.baseURL });
 
       // Inject models if already configured to show them in the UI immediately

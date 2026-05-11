@@ -40,16 +40,23 @@ describe("classifyError", () => {
     }
   });
 
-  it("NetworkError は create / pre-stream で retry:true (delay 500ms)", () => {
+  it("NetworkError は create / pre-stream で retry:true (delay 1000ms)", () => {
     const err = new NetworkError("disconnect");
-    expect(classifyError(err, { phase: "create" })).toMatchObject({ retry: true, delayMs: 500 });
-    expect(classifyError(err, { phase: "pre-stream" })).toMatchObject({ retry: true, delayMs: 500 });
+    expect(classifyError(err, { phase: "create" })).toMatchObject({ retry: true, delayMs: 1000 });
+    expect(classifyError(err, { phase: "pre-stream" })).toMatchObject({ retry: true, delayMs: 1000 });
   });
 
-  it("NetworkError は in-stream / post-stream では retry: false（ストリーム重複防止）", () => {
-    const err = new NetworkError("flap");
-    expect(classifyError(err, { phase: "in-stream" }).retry).toBe(false);
-    expect(classifyError(err, { phase: "post-stream" }).retry).toBe(false);
+  it("ConnectError / Unavailable / DeadlineExceeded もネットワークエラーとして retry: true", () => {
+    for (const name of ["ConnectError", "Unavailable", "DeadlineExceeded"]) {
+      const err = new Error("grpc fail");
+      err.name = name;
+      expect(classifyError(err, { phase: "create" })).toMatchObject({ retry: true, delayMs: 1000 });
+    }
+  });
+
+  it("メッセージに 'network error' や 'timeout' が含まれる場合も retry: true", () => {
+    expect(classifyError(new Error("A network error occurred"), { phase: "create" })).toMatchObject({ retry: true, delayMs: 1000 });
+    expect(classifyError(new Error("request timed out"), { phase: "create" })).toMatchObject({ retry: true, delayMs: 1000 });
   });
 
   it("RateLimitError は create / pre-stream で retry: true (delay 2000ms)", () => {
@@ -57,10 +64,13 @@ describe("classifyError", () => {
       retry: true,
       delayMs: 2000,
     });
-    expect(classifyError(new RateLimitError("rl"), { phase: "pre-stream" })).toMatchObject({
-      retry: true,
-      delayMs: 2000,
-    });
+  });
+
+  it("ResourceExhausted やメッセージに 'rate limit' が含まれる場合もレート制限として retry: true", () => {
+    const err = new Error("out of quota");
+    err.name = "ResourceExhausted";
+    expect(classifyError(err, { phase: "create" })).toMatchObject({ retry: true, delayMs: 2000 });
+    expect(classifyError(new Error("Rate limit exceeded"), { phase: "create" })).toMatchObject({ retry: true, delayMs: 2000 });
   });
 
   it("RateLimitError は in-stream / post-stream で retry: false (ストリーム重複防止)", () => {

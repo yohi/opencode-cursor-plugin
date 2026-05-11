@@ -146,8 +146,8 @@ function createLanguageModel(deps: {
         log.error("cursor-provider: doStream threw an error", { message });
 
         // Instead of returning a stream with an error object, which might crash opencode core if it expects a specific format,
-        // we throw a standard Error object so that the Provider framework handles the rejection natively.
-        throw new Error(`Cursor Provider Error: ${message}`);
+        // we return a rejected promise so that the Provider framework handles the rejection natively.
+        return Promise.reject(new Error(`Cursor Provider Error: ${message}`));
       }
     },
   } as ExtractedModelV2 & {
@@ -209,7 +209,7 @@ async function runDoStream(opts: {
 
   if (!apiKey) {
     log.error("cursor-provider: doStream invoked without API key");
-    throw new Error("Cursor API key is not set; run 'opencode auth login cursor' or export CURSOR_API_KEY");
+    return Promise.reject(new Error("Cursor API key is not set; run 'opencode auth login cursor' or export CURSOR_API_KEY"));
   }
 
   if (!warnState.hasWarned() && args.chatParams && Object.keys(args.chatParams as Record<string, unknown>).length > 0) {
@@ -301,7 +301,7 @@ async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log
         details: errObj.details,
       });
 
-      if (!canRetry) throw err;
+      if (!canRetry) return Promise.reject(err);
 
       const backoffDelay = decision.delayMs * Math.pow(2, attempt - 1);
       log.info(`cursor-provider: retrying in ${backoffDelay}ms...`);
@@ -309,6 +309,5 @@ async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log
     }
   }
 
-  // codacy:ignore-issue:UnhandledErrorsDetectedInAsynchronousFunction
-  throw new Error("Agent creation failed after maximum retries");
+  return Promise.reject(new Error("Agent creation failed after maximum retries"));
 }

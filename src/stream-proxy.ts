@@ -215,9 +215,9 @@ export function createStream(input: StreamProxyInput): {
             let attempt = 1; // 最初の失敗を1回目とする
             let currentErr = err;
 
-            while (attempt < maxRetries && !internalAbort.signal.aborted) {
+            while (attempt < maxRetries) {
               const retryDecision = classifyError(currentErr, { phase });
-              if (!retryDecision.retry) break;
+              if (!retryDecision.retry || internalAbort.signal.aborted) break;
 
               const backoffDelay = retryDecision.delayMs * Math.pow(2, attempt - 1);
               

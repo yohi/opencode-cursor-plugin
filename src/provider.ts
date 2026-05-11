@@ -47,7 +47,7 @@ async function listModelsWithTimeout(apiKey: string, log: Logger): Promise<Fallb
     });
     return null;
   } finally {
-    if (timeoutId) clearTimeout(timeoutId);
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
   }
 }
 
@@ -66,7 +66,7 @@ export function createProviderHook(deps: {
       const dynamicModels = apiKey ? await listModelsWithTimeout(apiKey, log) : null;
       const sourceModels = dynamicModels ?? STATIC_FALLBACK_MODELS;
 
-      const result: Record<string, any> = Object.create(null);
+      const result: Record<string, LanguageModelV2ModelMetadata> = Object.create(null);
       for (const rawModel of sourceModels) {
         const id = rawModel.id;
         if (!id) continue;
@@ -266,6 +266,7 @@ async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log
       await new Promise((resolve) => setTimeout(resolve, backoffDelay));
     }
   }
-  // This part should technically not be reached if maxRetries > 0 and throw err is called above
-  throw new Error("Agent creation failed after max retries");
+  // The loop above only exits via 'return' on success or 'throw err' on non-retryable/max-retries.
+  // We throw a final error here just to be absolutely certain and satisfy static analysis.
+  throw new Error("Agent creation failed after reaching maximum retries");
 }

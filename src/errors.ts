@@ -74,7 +74,7 @@ export function classifyError(err: unknown, ctx: { phase: RetryPhase }): RetryDe
   };
 
   const mapped = Object.prototype.hasOwnProperty.call(errorMap, errorName)
-    ? errorMap[errorName]
+    ? errorMap[errorName as keyof typeof errorMap]
     : undefined;
   if (mapped !== undefined) return noRetry(mapped);
   if (errorName.endsWith("SdkError")) return noRetry("CursorSdkError");

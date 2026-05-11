@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { SDKAgent } from "@cursor/sdk";
 import type { Logger } from "./logger.js";
 import { STATIC_FALLBACK_MODELS } from "./models.js";
-import { translate, type LanguageModelV2Prompt } from "./translator.js";
+import { translate, type ModelV2Prompt } from "./translator.js";
 import type { AgentPool } from "./agent-pool.js";
 import { fingerprintApiKey } from "./agent-pool.js";
 import { disposeAgentSafely } from "./agent-cleanup.js";
@@ -124,7 +124,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
     modelId = "composer-2";
   }
 
-  const messages = body.messages as LanguageModelV2Prompt;
+  const messages = body.messages as ModelV2Prompt;
   
   if (messages.length === 0) {
     sendJson(res, 400, { error: { message: "messages is empty" } });

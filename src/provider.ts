@@ -1,4 +1,4 @@
-import type { ProviderHook, ProviderHookContext, LanguageModelV2 } from "@opencode-ai/plugin";
+import type { ProviderHook, ProviderHookContext } from "@opencode-ai/plugin";
 import type { SDKAgent } from "@cursor/sdk";
 import { disposeAgentSafely } from "./agent-cleanup.js";
 import type { AgentPool } from "./agent-pool.js";
@@ -7,7 +7,7 @@ import { classifyError, logError } from "./errors.js";
 import type { Logger } from "./logger.js";
 import { STATIC_FALLBACK_MODELS, makeModelMeta, type FallbackModel } from "./models.js";
 import { createStream } from "./stream-proxy.js";
-import { translate, type LanguageModelV2Prompt } from "./translator.js";
+import { translate, type ModelV2Prompt } from "./translator.js";
 
 const MODELS_LIST_TIMEOUT_MS = 10_000;
 type RawSDKModel = {
@@ -66,54 +66,75 @@ export function createProviderHook(deps: {
       const dynamicModels = apiKey ? await listModelsWithTimeout(apiKey, log) : null;
       const sourceModels = dynamicModels ?? STATIC_FALLBACK_MODELS;
 
-      const result: Record<string, LanguageModelV2> = Object.create(null);
+      const modelMap = new Map<string, any>();
       for (const rawModel of sourceModels) {
         const id = rawModel.id;
-        // Basic sanitization to prevent prototype pollution or other object injection issues
         if (!id || typeof id !== "string" || id === "__proto__" || id === "constructor" || id === "prototype") {
           continue;
         }
 
-        const meta = makeModelMeta({
-          ...rawModel,
+        modelMap.set(
           id,
-          name: rawModel.name,
-          contextWindow: rawModel.contextWindow,
-        });
-
-        const model: LanguageModelV2 = {
-          ...meta,
-          async doStream(args: { prompt: LanguageModelV2Prompt; abortSignal?: AbortSignal; chatParams?: unknown }) {
-            try {
-              const currentApiKey = await resolveApiKey(ctx, log);
-              return await runDoStream({
-                args,
-                modelId: id,
-                apiKey: currentApiKey,
-                log,
-                pool,
-                warnState: {
-                  hasWarned: () => warnedParamsOnce,
-                  markWarned: () => {
-                    warnedParamsOnce = true;
-                  },
-                },
-              });
-            } catch (err) {
-              const message = err instanceof Error ? err.message : String(err);
-              log.error("cursor-provider: doStream threw an error", { message });
-              
-              // Instead of returning a stream with an error object, which might crash opencode core if it expects a specific format,
-              // we throw a standard Error object so that the Provider framework handles the rejection natively.
-              throw new Error(`Cursor Provider Error: ${message}`);
-            }
-          },
-        };
-
-        result[id] = model;
+          createLanguageModel({
+            rawModel,
+            ctx,
+            log,
+            pool,
+            resolveApiKey,
+            warnState: {
+              hasWarned: () => warnedParamsOnce,
+              markWarned: () => {
+                warnedParamsOnce = true;
+              },
+            },
+          }),
+        );
       }
 
-      return result;
+      return Object.fromEntries(modelMap);
+    },
+  };
+}
+
+function createLanguageModel(deps: {
+  rawModel: FallbackModel;
+  ctx: ProviderHookContext;
+  log: Logger;
+  pool: AgentPool;
+  resolveApiKey: (ctx: ProviderHookContext, log?: Logger) => Promise<string | undefined>;
+  warnState: { hasWarned: () => boolean; markWarned: () => void };
+}): any {
+  const { rawModel, ctx, log, pool, resolveApiKey, warnState } = deps;
+  const id = rawModel.id;
+
+  const meta = makeModelMeta({
+    ...rawModel,
+    id,
+    name: rawModel.name,
+    contextWindow: rawModel.contextWindow,
+  });
+
+  return {
+    ...meta,
+    async doStream(args: { prompt: ModelV2Prompt; abortSignal?: AbortSignal; chatParams?: unknown }) {
+      try {
+        const currentApiKey = await resolveApiKey(ctx, log);
+        return await runDoStream({
+          args,
+          modelId: id,
+          apiKey: currentApiKey,
+          log,
+          pool,
+          warnState,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        log.error("cursor-provider: doStream threw an error", { message });
+
+        // Instead of returning a stream with an error object, which might crash opencode core if it expects a specific format,
+        // we throw a standard Error object so that the Provider framework handles the rejection natively.
+        throw new Error(`Cursor Provider Error: ${message}`);
+      }
     },
   };
 }
@@ -141,7 +162,7 @@ async function getValidCursorModels(apiKey: string | undefined, log: Logger): Pr
 }
 
 async function runDoStream(opts: {
-  args: { prompt: LanguageModelV2Prompt; abortSignal?: AbortSignal; chatParams?: unknown };
+  args: { prompt: ModelV2Prompt; abortSignal?: AbortSignal; chatParams?: unknown };
   modelId: string;
   apiKey: string | undefined;
   log: Logger;

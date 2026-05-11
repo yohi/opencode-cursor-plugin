@@ -6,7 +6,7 @@ export type PromptMessage =
   | { role: "system"; content: string | PromptPart[] }
   | { role: "user" | "assistant" | "tool"; content: string | PromptPart[] };
 
-export type LanguageModelV2Prompt = PromptMessage[];
+export type ModelV2Prompt = PromptMessage[];
 
 export interface TranslatedRequest {
   prefixHash: string;
@@ -55,7 +55,7 @@ function hashMessages(messages: PromptMessage[]): string {
   return hash.digest("hex");
 }
 
-export function translate(prompt: LanguageModelV2Prompt): TranslatedRequest {
+export function translate(prompt: ModelV2Prompt): TranslatedRequest {
   if (prompt.length === 0) {
     throw new Error("translate: prompt is empty");
   }

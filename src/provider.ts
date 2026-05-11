@@ -302,7 +302,9 @@ async function runDoStream(opts: {
         log,
       }),
     )
-    .catch((err) => logError(log, err, { phase: "post-stream" }));
+    .catch((err) => {
+      logError(log, err, { phase: "post-stream" });
+    });
 
   return { stream };
 }
@@ -311,12 +313,12 @@ async function runDoStream(opts: {
  * Single attempt to create an agent with error classification and logging.
  */
 async function performAgentCreationAttempt(deps: {
-  Agent: any;
+  Agent: { create: (opts: { apiKey: string; model: { id: string } }) => Promise<unknown> };
   apiKey: string;
   modelId: string;
   log: Logger;
   attempt: number;
-}): Promise<{ agent: SDKAgent } | { error: any; canRetry: boolean; delay: number }> {
+}): Promise<{ agent: SDKAgent } | { error: unknown; canRetry: boolean; delay: number }> {
   const { Agent, apiKey, modelId, log, attempt } = deps;
   try {
     log.debug("cursor-provider: calling Agent.create", { modelId, attempt });
@@ -340,10 +342,12 @@ async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log
   const { log } = deps;
 
   for (let attempt = 1; attempt <= 3; attempt++) {
-    const result = await performAgentCreationAttempt({ Agent, ...deps, attempt });
+    const result = await performAgentCreationAttempt({ Agent: Agent as unknown as { create: (opts: { apiKey: string; model: { id: string } }) => Promise<unknown> }, ...deps, attempt });
 
     if ("agent" in result) return result.agent;
-    if (!result.canRetry) return Promise.reject(result.error);
+    if (!result.canRetry) {
+      return Promise.reject(result.error instanceof Error ? result.error : new Error(String(result.error)));
+    }
 
     log.info(`cursor-provider: retrying in ${result.delay}ms...`);
     await setTimeout(result.delay);

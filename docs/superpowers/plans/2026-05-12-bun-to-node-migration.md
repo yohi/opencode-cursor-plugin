@@ -70,6 +70,11 @@ PoC scratch (コミットしない):
 
 Phase は順次進行とし、前 Phase の PR が `master` にマージされてから次 Phase を開始します。
 
+> **順次進行とする根拠:**
+> - **Phase 1 → Phase 2:** Phase 2 の PoC スクリプトは Node 20 Devcontainer 内 (`pnpm dlx tsx ...`) かつ `remoteEnv.CURSOR_API_KEY` 注入を前提とするため、Phase 1 Task 1.1 で更新する Devcontainer に依存する。
+> - **Phase 2 → Phase 3:** Phase 3 は PoC 結果に依存しないため理論上は並走可能だが、PoC 失敗時の方針切替（Phase 4 縮退）と Phase 3 のレビュー集中を競合させないため逐次進行を選択。
+> - **Phase 3 → Phase 4:** Phase 4 Task 4.2 は Phase 2 PoC 結果による分岐に加え、Phase 3 の `agent-cleanup` 改修と同じ呼び出し経路（`Agent.create` ↔ `disposeAgentSafely`）に触れるため、衝突回避のため逐次進行とする。
+
 ---
 
 ## Phase 1: Devcontainer & 開発ツーリングの整備
@@ -464,14 +469,14 @@ await agent[Symbol.asyncDispose]();
 
 - [ ] **Step 3: Devcontainer 内で PoC を実行する**
 
-Devcontainer 内シェルで実行する（`CURSOR_API_KEY` は `remoteEnv` で注入される）。
+Devcontainer 内シェルで実行する（`CURSOR_API_KEY` は `remoteEnv` で注入される）。本 Devcontainer は Node 20 系で固定（Phase 1 Task 1.1）のため、TypeScript 直接実行には `tsx` を `pnpm dlx` 経由で利用する。
 
 ```bash
-node --experimental-strip-types --no-warnings scripts/poc-agent-local-mode.ts 2>&1 | tee poc-output.log
+pnpm dlx tsx scripts/poc-agent-local-mode.ts 2>&1 | tee poc-output.log
 echo "EXIT=$?"
 ```
 
-> Node 20 で TypeScript を直接実行できない場合は `pnpm exec tsx scripts/poc-agent-local-mode.ts` でも可（`tsx` が devDependencies に無ければ `pnpm dlx tsx ...` を使う）。実行コマンドと出力は PR 説明欄に転記する。
+> `--experimental-strip-types` は Node v22.6.0 以降でのみ利用可能なため、本計画の Devcontainer（Node 20）では使用不可。`tsx` を恒久的に追加すると設計書 §4.2 の `devDependencies` 一覧と乖離するため、本 PoC では `pnpm dlx` でその場利用にとどめる（PoC スクリプトと同様、依存追加もコミットしない）。実行コマンドと出力は PR 説明欄に転記する。
 
 - [ ] **Step 4: 結果を判定し記録する**
 
@@ -485,7 +490,10 @@ echo "EXIT=$?"
 
 - [ ] **Step 5: PoC スクリプトと一時ログを削除する**
 
+削除前に `git status` で `poc-output.log` および `scripts/poc-agent-local-mode.ts` がステージングされていないことを確認する（誤コミット防止）。
+
 ```bash
+git status --short   # poc-output.log / scripts/poc-agent-local-mode.ts は untracked のままであること
 rm scripts/poc-agent-local-mode.ts poc-output.log
 ```
 
@@ -519,7 +527,7 @@ gh pr create --draft \
 - 実行環境: Devcontainer (javascript-node:20)
 - 観測ログ抜粋:
 
-```
+```text
 <poc-output.log の冒頭・末尾を貼付>
 ```
 
@@ -1082,6 +1090,8 @@ pnpm test tests/integration/provider-flow.test.ts
 
 期待: PASS。FAIL する場合のみモック側を `expect.objectContaining` ベースに緩める。
 
+> **注意:** 本 Step で `tests/integration/provider-flow.test.ts` を変更した場合のみ、Step 9 の `git add` 対象に同ファイルを含めること。未変更の場合は `git add` 対象から外す。
+
 - [ ] **Step 8: 全テストが PASS することを確認 (Green)**
 
 ```bash
@@ -1094,8 +1104,13 @@ pnpm test
 
 - [ ] **Step 9: コミット**
 
+Step 7 で `tests/integration/provider-flow.test.ts` に変更を加えた場合のみ、同ファイルを `git add` 対象に含める（未変更なら外す）。
+
 ```bash
-git add src/openai-proxy.ts src/provider.ts tests/provider.test.ts tests/integration/provider-flow.test.ts
+# 必須: 本 Task で必ず変更されるファイル
+git add src/openai-proxy.ts src/provider.ts tests/provider.test.ts
+# 条件付き: Step 7 で実際に変更を加えた場合のみ追加
+# git add tests/integration/provider-flow.test.ts
 git commit -m "feat(agent): Agent.create に local: { cwd: process.cwd() } を明示しネイティブ cwd 解決を堅牢化"
 git push -u origin feature/phase4-task2_agent-create-local-mode
 ```

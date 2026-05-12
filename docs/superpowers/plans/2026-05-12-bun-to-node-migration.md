@@ -558,7 +558,11 @@ gh pr create --draft \
   --body "Phase 4 実装方針を決定するための PoC ゲート。詳細エビデンスは #<TASK_PR> 参照。"
 ```
 
-Phase 2 の `master` マージ後、PoC 判定結果を **Phase 4 のスコープに反映** したうえで Phase 3 を開始してください（Phase 3 自体は PoC 結果に依存しません）。
+Phase 2 の `master` マージ後の進め方は次のとおり（**Phase 3 → Phase 4 の順を厳守**）:
+
+1. **PoC 判定結果を記録のみ行う**（コード変更は行わない）。記録先は Phase 2 PR 説明欄と、Phase 4 開始時に参照できる場所（PR コメント転記やプロジェクトメモ等）。
+2. **Phase 3 を先に着手・完了** させる（PoC 結果に依存せず独立して実装可能）。
+3. **Phase 4 の実作業は Phase 3 が `master` にマージされた後に着手** し、開始時点で 1. に記録した PoC 判定結果を参照して主案 / フォールバックを選択する（Task 4.2 冒頭の判定ステップで実施）。
 
 ---
 
@@ -1194,7 +1198,17 @@ EOF
 
 ## 補足: 実装エンジニア向け運用メモ
 
-- **Devcontainer 起動忘れチェック**: コマンド実行前に `printenv DEVCONTAINER` が `true` を返すか、もしくは `hostname` がコンテナ ID を返すことを確認すると安全。
+- **Devcontainer 起動忘れチェック**: 単一の判定では環境差で誤判定し得るため、以下の **いずれかが真** であればコンテナ内とみなす（OR 結合）。すべて偽の場合はホスト OS 上で実行している可能性が高いので作業を中断し、Devcontainer に入り直すこと。
+  1. `printenv DEVCONTAINER` が `true` を返す（VS Code Dev Containers / Codespaces で自動設定。CLI 起動時は未設定の場合あり）
+  2. `test -f /.dockerenv` が exit 0（Docker ベースコンテナで一貫して存在。Devcontainer も該当）
+  3. `hostname` がコンテナ ID 風の短いハッシュ文字列を返す（`runArgs --hostname` で上書きされている場合は不正確）
+
+  ワンライナーで確認する例:
+
+  ```bash
+  ( [ "$(printenv DEVCONTAINER 2>/dev/null)" = "true" ] || [ -f /.dockerenv ] || hostname | grep -qE '^[0-9a-f]{12}$' ) \
+    && echo "inside container" || echo "HOST OS — reopen in container"
+  ```
 - **PR レビューでのエビデンス**: `pnpm test` / `pnpm typecheck` / `pnpm lint` の実行ログを PR 本文の `<details>` ブロックに貼付する。
 - **PoC 失敗時のアフターケア**: Task 4.2 を見送る場合、`tests/integration/` に SDK アップグレード時の回帰検知用の "smoke test" を別 PR で追加する。チケット起票は本 Phase の責務外。
 - **既存テストの追加・削除なし**: 本計画は設計書 §2.2 の非ゴール（既存テスト群の拡張は最小限）を厳守し、変更対象のテストのみに手を入れる。

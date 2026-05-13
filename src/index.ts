@@ -8,7 +8,7 @@ import { startOpenAiProxy } from "./openai-proxy.js";
 import { createProviderHook } from "./provider.js";
 import { STATIC_FALLBACK_MODELS, makeModelMeta } from "./models.js";
 
-const POOL_CAPACITY = 8;
+const POOL_CAPACITY = 10;
 
 /**
  * OpenCode client with extended properties used by this plugin.

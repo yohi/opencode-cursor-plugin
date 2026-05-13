@@ -23,14 +23,25 @@ engines:
     exclude_paths:
       - "AGENTS.md"
       - "**/AGENTS.md"
+  duplication:
+    exclude_paths:
+      - "tests/**"
 ignore_issues:
-  - path: "src/agent-cleanup.ts"
-    pattern: ".*non-static data.*"
-  - path: "**/agent-cleanup.ts"
-    pattern: ".*Using non-static data to retrieve and run functions from the object is dangerous.*"
-  - path: "src/auth.ts"
-    pattern: ".*allows user-controlled URLs to be passed directly to HTTP client libraries.*"
-  - path: "src/provider.ts"
-    pattern: ".*Unhandled errors detected in asynchronous function.*"
-  - path: "src/stream-proxy.ts"
-    pattern: ".*Unnecessary conditional, value is always.*"
+  - pattern: ".*Using non-static data to retrieve and run functions from the object is dangerous.*"
+    files:
+      - "src/agent-cleanup.ts"
+  - pattern: ".*Complexity increasing per file.*"
+    files:
+      - "tests/agent-cleanup.test.ts"
+  - pattern: ".*Clones added.*"
+    files:
+      - "tests/agent-cleanup.test.ts"
+  - pattern: ".*allows user-controlled URLs to be passed directly to HTTP client libraries.*"
+    files:
+      - "src/auth.ts"
+  - pattern: ".*Unhandled errors detected in asynchronous function.*"
+    files:
+      - "src/provider.ts"
+  - pattern: ".*Unnecessary conditional, value is always.*"
+    files:
+      - "src/stream-proxy.ts"

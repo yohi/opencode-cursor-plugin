@@ -666,7 +666,7 @@ git checkout -b feature/phase3-task1_dispose-tests-red
   });
 ```
 
-- [ ] **Step 3: テストを実行し、追加分が FAIL することを確認 (Red)**
+- [x] **Step 3: テストを実行し、追加分が FAIL することを確認 (Red)**
 
 Devcontainer 内で実行する。
 
@@ -836,7 +836,7 @@ EOF
 
 ### Phase 3 完了処理
 
-- [ ] **Step P3.X: Phase Base の Draft PR を `master` に対して作成**
+- [x] **Step P3.X: Phase Base の Draft PR を `master` に対して作成**
 
 ```bash
 git checkout feature/phase3_dispose-hardening__base

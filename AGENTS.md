@@ -14,7 +14,7 @@ This is an OpenCode Provider plugin that exposes Cursor Headless SDK (`@cursor/s
 </tech_stack>
 
 <commands>
-To verify your changes, please use the following commands. Ideally, these should be run inside the provided Devcontainer (`.devcontainer/`).
+To verify your changes, please use the following commands. **Required:** these MUST be run inside the provided Devcontainer (`.devcontainer/`) for native module (`sqlite3`) reproducibility. Running them on the host OS is not accepted as evidence in PR reviews.
 - Install dependencies: `pnpm install` (**Never** use npm or yarn)
 - Type-checking: `pnpm typecheck`
 - Unit tests: `pnpm test`

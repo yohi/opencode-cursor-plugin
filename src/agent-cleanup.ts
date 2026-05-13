@@ -14,7 +14,9 @@ async function disposeWithTimeout(agent: SDKAgent, log: Logger): Promise<"ok" | 
   try {
     // Symbol.asyncDispose は言語仕様上ブラケット記法が必須であり、動的なキーアクセスではないため、Codacy/ESLint のセキュリティ警告を無視します。
     // eslint-disable-next-line security/detect-object-injection
-    const disposePromise = agent[Symbol.asyncDispose]().then(() => "ok" as const); // codacy-ignore
+    // codacy-ignore
+    // skip-codacy
+    const disposePromise = agent[Symbol.asyncDispose]().then(() => "ok" as const);
     const result = await Promise.race([disposePromise, timeoutPromise]);
 
   if (result === "timeout") {

@@ -26,14 +26,23 @@ engines:
   duplication:
     exclude_paths:
       - "tests/**"
+  metric:
+    exclude_paths:
+      - "tests/**"
 ignore_issues:
-  - pattern: ".*Using non-static data to retrieve and run functions from the object is dangerous.*"
+  - pattern: "Using non-static data to retrieve and run functions from the object is dangerous"
     files:
       - "src/agent-cleanup.ts"
-  - pattern: ".*Complexity increasing per file.*"
+  - pattern: "ESLint_security_detect-object-injection"
+    files:
+      - "src/agent-cleanup.ts"
+  - pattern: "security/detect-object-injection"
+    files:
+      - "src/agent-cleanup.ts"
+  - pattern: "Complexity"
     files:
       - "tests/agent-cleanup.test.ts"
-  - pattern: ".*Clones added.*"
+  - pattern: "Complexity increasing per file"
     files:
       - "tests/agent-cleanup.test.ts"
   - pattern: ".*allows user-controlled URLs to be passed directly to HTTP client libraries.*"

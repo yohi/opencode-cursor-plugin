@@ -1,10 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as timers from "node:timers/promises";
 import { DISPOSE_TIMEOUT_MS, RETRY_DELAY_MS, disposeAgentSafely } from "../src/agent-cleanup.js";
 import { createLogger } from "../src/logger.js";
+
+vi.mock("node:timers/promises", () => ({
+  setTimeout: vi.fn().mockResolvedValue(undefined),
+}));
 
 describe("disposeAgentSafely", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.clearAllMocks();
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -26,7 +32,7 @@ describe("disposeAgentSafely", () => {
     const agent = { [Symbol.asyncDispose]: vi.fn(() => new Promise<void>(() => {})) } as any;
     const result = disposeAgentSafely(agent, log);
 
-    vi.advanceTimersByTime(5_000);
+    await vi.advanceTimersByTimeAsync(5_000);
     await expect(result).resolves.toBeUndefined();
     expect(rawLog.warn).toHaveBeenCalled();
   });
@@ -37,8 +43,12 @@ describe("disposeAgentSafely", () => {
     const agent = { [Symbol.asyncDispose]: vi.fn().mockRejectedValue(new TypeError("boom")) } as any;
 
     await expect(disposeAgentSafely(agent, log)).resolves.toBeUndefined();
-    expect(rawLog.warn).toHaveBeenCalled();
+    expect(rawLog.warn).toHaveBeenCalledWith(
+      "cursor-provider: agent dispose failed",
+      expect.objectContaining({ errorType: "TypeError" }),
+    );
     expect(agent[Symbol.asyncDispose]).toHaveBeenCalledTimes(2);
+    expect(timers.setTimeout).toHaveBeenCalledWith(RETRY_DELAY_MS);
   });
 
   it("dispose が timeout の場合はリトライしない", async () => {
@@ -47,10 +57,10 @@ describe("disposeAgentSafely", () => {
     const agent = { [Symbol.asyncDispose]: vi.fn(() => new Promise<void>(() => {})) } as any;
 
     const result = disposeAgentSafely(agent, log);
-    vi.advanceTimersByTime(DISPOSE_TIMEOUT_MS);
+    await vi.advanceTimersByTimeAsync(DISPOSE_TIMEOUT_MS);
     await expect(result).resolves.toBeUndefined();
 
-    vi.advanceTimersByTime(RETRY_DELAY_MS + 1_000);
+    await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS + 1_000);
     expect(agent[Symbol.asyncDispose]).toHaveBeenCalledTimes(1);
   });
 });

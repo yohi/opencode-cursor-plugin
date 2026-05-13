@@ -125,7 +125,7 @@ RUN corepack enable \
 USER node
 ```
 
-- [ ] **Step 3: devcontainer.json を更新（Node20 ガード + 拡張機能/設定）**
+- [x] **Step 3: devcontainer.json を更新（Node20 ガード + 拡張機能/設定）**
 
 `.devcontainer/devcontainer.json` を以下に置換する。
 
@@ -226,7 +226,7 @@ Devcontainer 内シェルで実行する。
 pnpm add -D @biomejs/biome@^1.9.4
 ```
 
-- [ ] **Step 3: package.json に lint スクリプトを追加**
+- [x] **Step 3: package.json に lint スクリプトを追加**
 
 `package.json` の `scripts` セクションに `"lint": "biome ci ."` を `typecheck` の直後に追加する。最終形:
 
@@ -308,7 +308,7 @@ git pull --ff-only origin feature/phase1_devcontainer-tooling__base
 git checkout -b feature/phase1-task3_docs-devcontainer-required
 ```
 
-- [ ] **Step 2: AGENTS.md の `<commands>` セクションを Devcontainer 必須に書き換える**
+- [x] **Step 2: AGENTS.md の `<commands>` セクションを Devcontainer 必須に書き換える**
 
 `AGENTS.md` 17 行目（"To verify your changes..." を含む文）を以下の文に置換する。
 
@@ -322,7 +322,7 @@ To verify your changes, please use the following commands. Ideally, these should
 To verify your changes, please use the following commands. **Required:** these MUST be run inside the provided Devcontainer (`.devcontainer/`) for native module (`sqlite3`) reproducibility. Running them on the host OS is not accepted as evidence in PR reviews.
 ```
 
-- [ ] **Step 3: README.md の開発者向けセクションに Devcontainer 必須化を追記**
+- [x] **Step 3: README.md の開発者向けセクションに Devcontainer 必須化を追記**
 
 `README.md` の「開発」「Development」「Contributing」相当のセクションに以下の段落を追加（該当セクションがない場合は末尾近くに新規セクションを作成）。
 
@@ -600,7 +600,7 @@ git pull --ff-only origin feature/phase3_dispose-hardening__base
 git checkout -b feature/phase3-task1_dispose-tests-red
 ```
 
-- [ ] **Step 2: テストケースを追記**
+- [x] **Step 2: テストケースを追記**
 
 `tests/agent-cleanup.test.ts` の `describe("disposeAgentSafely", ...)` ブロック内、既存テストの直後に以下を追加する（既存テストは残す）。
 
@@ -720,7 +720,7 @@ git pull --ff-only origin feature/phase3-task1_dispose-tests-red
 git checkout -b feature/phase3-task2_dispose-impl
 ```
 
-- [ ] **Step 2: `src/agent-cleanup.ts` を全面書き換え**
+- [x] **Step 2: `src/agent-cleanup.ts` を全面書き換え**
 
 `src/agent-cleanup.ts` を以下に置換する（設計書 §4.5 そのまま）。
 
@@ -896,7 +896,7 @@ git pull --ff-only origin feature/phase4_agent-create-finalization__base
 git checkout -b feature/phase4-task1_pool-capacity-10
 ```
 
-- [ ] **Step 2: `src/index.ts` の定数を書き換える**
+- [x] **Step 2: `src/index.ts` の定数を書き換える**
 
 `src/index.ts:11` を以下のとおり書き換える。
 
@@ -973,7 +973,7 @@ git pull --ff-only origin feature/phase4_agent-create-finalization__base
 git checkout -b feature/phase4-task2_agent-create-local-mode
 ```
 
-- [ ] **Step 3: 先にテストを更新する (TDD red)**
+- [x] **Step 3: 先にテストを更新する (TDD red)**
 
 `tests/provider.test.ts` 内で `Agent.create` のモック呼び出しを検証している箇所を特定し、引数アサートに `local: { cwd: <現在の作業ディレクトリ> }` の検証を追加する。テスト中で `process.cwd()` の評価タイミングが本体と一致するように `expect.objectContaining({ apiKey: expect.any(String), model: { id: expect.any(String) }, local: { cwd: process.cwd() } })` を使う。
 
@@ -999,7 +999,7 @@ pnpm test tests/provider.test.ts
 
 期待: `local: { cwd }` を要求するアサートが FAIL する。
 
-- [ ] **Step 5: `src/openai-proxy.ts` の `Agent.create` 呼び出しを更新**
+- [x] **Step 5: `src/openai-proxy.ts` の `Agent.create` 呼び出しを更新**
 
 `src/openai-proxy.ts:160-165` の `Agent.create` 呼び出しを以下に置換する。
 
@@ -1029,7 +1029,7 @@ pnpm test tests/provider.test.ts
         });
 ```
 
-- [ ] **Step 6: `src/provider.ts` の型と呼び出しを拡張**
+- [x] **Step 6: `src/provider.ts` の型と呼び出しを拡張**
 
 `src/provider.ts` の `performAgentCreationAttempt` 周辺 (line 313-345 付近) を以下のとおり改修する。
 

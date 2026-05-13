@@ -162,6 +162,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
         agent = await Agent.create({
           apiKey,
           model: { id: modelId },
+          local: { cwd: process.cwd() },
         });
         messageToSend = translated.fullPromptOnMiss;
         log.debug("cursor-openai-proxy: pool miss", { prefixHash: translated.prefixHash.slice(0, 8) });

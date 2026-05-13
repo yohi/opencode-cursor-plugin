@@ -1,56 +1,54 @@
 {
-  "name": "@yohi/opencode-cursor-plugin",
-  "version": "1.5.0",
-  "description": "OpenCode provider plugin that exposes Cursor SDK models as a primary LLM provider",
-  "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
-  },
-  "type": "module",
-  "main": "dist/index.js",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
-  },
-  "files": [
-    "dist"
-  ],
-  "engines": {
-    "node": ">=20.0.0",
-    "pnpm": ">=9.12.0"
-  },
-  "scripts": {
-    "build": "tsc --project tsconfig.json --outDir dist --noEmit false",
-    "prepublishOnly": "pnpm build",
-    "lint": "biome ci .",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:e2e": "bash scripts/e2e-cursor-provider.sh"
-  },
-  "dependencies": {
-    "@cursor/sdk": "1.0.12",
-    "dotenv": "^16.4.5",
-    "zod": "^4.1.8"
-  },
-  "devDependencies": {
-    "@biomejs/biome": "^1.9.4",
-    "@opencode-ai/plugin": "^1.14.30",
-    "@types/node": "^20.14.0",
-    "typescript": "^5.5.0",
-    "vitest": "^1.6.0"
-  },
-  "peerDependencies": {
-    "@opencode-ai/plugin": "^1.14.30"
-  },
-  "pnpm": {
-    "//": "The overrides below are security patches for known vulnerabilities",
-    "overrides": {
-      "@tootallnate/once": "^3.0.1",
-      "tar": "^7.5.11",
-      "undici": "^6.24.0"
-    }
-  },
-  "packageManager": "pnpm@9.12.0"
+	"name": "@yohi/opencode-cursor-plugin",
+	"version": "1.5.0",
+	"description": "OpenCode provider plugin that exposes Cursor SDK models as a primary LLM provider",
+	"publishConfig": {
+		"registry": "https://npm.pkg.github.com"
+	},
+	"type": "module",
+	"main": "dist/index.js",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"files": ["dist"],
+	"engines": {
+		"node": ">=20.0.0",
+		"pnpm": ">=9.12.0"
+	},
+	"scripts": {
+		"build": "tsc --project tsconfig.json --outDir dist --noEmit false",
+		"prepublishOnly": "pnpm build",
+		"lint": "biome ci .",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:e2e": "bash scripts/e2e-cursor-provider.sh"
+	},
+	"dependencies": {
+		"@cursor/sdk": "1.0.12",
+		"dotenv": "^16.4.5",
+		"zod": "^4.1.8"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^1.9.4",
+		"@opencode-ai/plugin": "^1.14.30",
+		"@types/node": "^20.14.0",
+		"typescript": "^5.5.0",
+		"vitest": "^1.6.0"
+	},
+	"peerDependencies": {
+		"@opencode-ai/plugin": "^1.14.30"
+	},
+	"pnpm": {
+		"//": "The overrides below are security patches for known vulnerabilities",
+		"overrides": {
+			"@tootallnate/once": "^3.0.1",
+			"tar": "^7.5.11",
+			"undici": "^6.24.0"
+		}
+	},
+	"packageManager": "pnpm@9.12.0"
 }

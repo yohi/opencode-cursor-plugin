@@ -1,66 +1,85 @@
-import type { SDKAgent } from "@cursor/sdk";
 import { setTimeout as sleep } from "node:timers/promises";
+import type { SDKAgent } from "@cursor/sdk";
 import type { Logger } from "./logger.js";
 
 export const DISPOSE_TIMEOUT_MS = 5_000;
 export const RETRY_DELAY_MS = 200;
 
-async function disposeWithTimeout(agent: SDKAgent, log: Logger): Promise<"ok" | "timeout"> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeoutPromise = new Promise<"timeout">((resolve) => {
-    timer = setTimeout(() => resolve("timeout"), DISPOSE_TIMEOUT_MS);
-  });
+async function disposeWithTimeout(
+	agent: SDKAgent,
+	log: Logger,
+): Promise<"ok" | "timeout"> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const timeoutPromise = new Promise<"timeout">((resolve) => {
+		timer = setTimeout(() => resolve("timeout"), DISPOSE_TIMEOUT_MS);
+	});
 
-  try {
-    // Symbol.asyncDispose は言語仕様上ブラケット記法が必須であり、動的なキーアクセスではないため、Codacy/ESLint のセキュリティ警告を無視します。
-    // eslint-disable-next-line security/detect-object-injection
-    // codacy-ignore
-    // skip-codacy
-    const disposePromise = agent[Symbol.asyncDispose]().then(() => "ok" as const);
-    const result = await Promise.race([disposePromise, timeoutPromise]);
+	try {
+		// Symbol.asyncDispose は言語仕様上ブラケット記法が必須であり、動的なキーアクセスではないため、Codacy/ESLint のセキュリティ警告を無視します。
+		// eslint-disable-next-line security/detect-object-injection
+		// codacy-ignore
+		// skip-codacy
+		const disposePromise = agent[Symbol.asyncDispose]().then(
+			() => "ok" as const,
+		);
+		const result = await Promise.race([disposePromise, timeoutPromise]);
 
-  if (result === "timeout") {
-    // タイムアウト後に dispose が遅延 reject した場合の UnhandledPromiseRejection を抑制する
-    disposePromise.catch((lateErr) => {
-      log.debug("cursor-provider: late reject after timeout while disposing agent", {
-        errorType: lateErr instanceof Error ? lateErr.constructor.name : typeof lateErr,
-      });
-    });
-  }
+		if (result === "timeout") {
+			// タイムアウト後に dispose が遅延 reject した場合の UnhandledPromiseRejection を抑制する
+			disposePromise.catch((lateErr) => {
+				log.debug(
+					"cursor-provider: late reject after timeout while disposing agent",
+					{
+						errorType:
+							lateErr instanceof Error
+								? lateErr.constructor.name
+								: typeof lateErr,
+					},
+				);
+			});
+		}
 
-  return result;
-} finally {
-  if (timer) clearTimeout(timer);
+		return result;
+	} finally {
+		if (timer) clearTimeout(timer);
+	}
 }
-}
 
-export async function disposeAgentSafely(agent: SDKAgent, log: Logger): Promise<void> {
-  try {
-    const result = await disposeWithTimeout(agent, log);
-    if (result === "timeout") {
-      log.warn("cursor-provider: agent dispose timed out", { timeoutMs: DISPOSE_TIMEOUT_MS });
-      return;
-    }
-  } catch (err) {
-    log.warn("cursor-provider: agent dispose failed", {
-      errorType: err instanceof Error ? err.constructor.name : typeof err,
-    });
+export async function disposeAgentSafely(
+	agent: SDKAgent,
+	log: Logger,
+): Promise<void> {
+	try {
+		const result = await disposeWithTimeout(agent, log);
+		if (result === "timeout") {
+			log.warn("cursor-provider: agent dispose timed out", {
+				timeoutMs: DISPOSE_TIMEOUT_MS,
+			});
+			return;
+		}
+	} catch (err) {
+		log.warn("cursor-provider: agent dispose failed", {
+			errorType: err instanceof Error ? err.constructor.name : typeof err,
+		});
 
-    await sleep(RETRY_DELAY_MS);
+		await sleep(RETRY_DELAY_MS);
 
-    try {
-      const retryResult = await disposeWithTimeout(agent, log);
-      if (retryResult === "timeout") {
-        log.warn("cursor-provider: retry dispose timed out", {
-          timeoutMs: DISPOSE_TIMEOUT_MS,
-          retryDelayMs: RETRY_DELAY_MS,
-        });
-      }
-    } catch (retryErr) {
-      log.warn("cursor-provider: retry dispose failed", {
-        errorType: retryErr instanceof Error ? retryErr.constructor.name : typeof retryErr,
-        retryDelayMs: RETRY_DELAY_MS,
-      });
-    }
-  }
+		try {
+			const retryResult = await disposeWithTimeout(agent, log);
+			if (retryResult === "timeout") {
+				log.warn("cursor-provider: retry dispose timed out", {
+					timeoutMs: DISPOSE_TIMEOUT_MS,
+					retryDelayMs: RETRY_DELAY_MS,
+				});
+			}
+		} catch (retryErr) {
+			log.warn("cursor-provider: retry dispose failed", {
+				errorType:
+					retryErr instanceof Error
+						? retryErr.constructor.name
+						: typeof retryErr,
+				retryDelayMs: RETRY_DELAY_MS,
+			});
+		}
+	}
 }

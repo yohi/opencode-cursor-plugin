@@ -1,24 +1,24 @@
 {
-  "name": "opencode-cursor-plugin",
-  "build": {
-    "dockerfile": "Dockerfile"
-  },
-  "remoteEnv": {
-    "CURSOR_API_KEY": "${localEnv:CURSOR_API_KEY}"
-  },
-  "postCreateCommand": "node -e \"const [major]=process.versions.node.split('.') ; if (Number(major) < 20) { console.error('Node.js 20+ is required'); process.exit(1); }\" && pnpm install --frozen-lockfile",
-  "customizations": {
-    "vscode": {
-      "extensions": [
-        "biomejs.biome",
-        "dbaeumer.vscode-eslint",
-        "esbenp.prettier-vscode",
-        "vitest.explorer"
-      ],
-      "settings": {
-        "editor.formatOnSave": true,
-        "typescript.tsdk": "node_modules/typescript/lib"
-      }
-    }
-  }
+	"name": "opencode-cursor-plugin",
+	"build": {
+		"dockerfile": "Dockerfile"
+	},
+	"remoteEnv": {
+		"CURSOR_API_KEY": "${localEnv:CURSOR_API_KEY}"
+	},
+	"postCreateCommand": "node -e \"const [major]=process.versions.node.split('.') ; if (Number(major) < 20) { console.error('Node.js 20+ is required'); process.exit(1); }\" && pnpm install --frozen-lockfile",
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"biomejs.biome",
+				"dbaeumer.vscode-eslint",
+				"esbenp.prettier-vscode",
+				"vitest.explorer"
+			],
+			"settings": {
+				"editor.formatOnSave": true,
+				"typescript.tsdk": "node_modules/typescript/lib"
+			}
+		}
+	}
 }

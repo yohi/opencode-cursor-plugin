@@ -7,8 +7,12 @@ export const RETRY_DELAY_MS = 200;
 
 async function disposeWithTimeout(agent: SDKAgent, log: Logger): Promise<"ok" | "timeout"> {
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
   const timeoutPromise = new Promise<"timeout">((resolve) => {
-    timer = setTimeout(() => resolve("timeout"), DISPOSE_TIMEOUT_MS);
+    timer = setTimeout(() => {
+      timedOut = true;
+      resolve("timeout");
+    }, DISPOSE_TIMEOUT_MS);
   });
 
   try {
@@ -18,9 +22,11 @@ async function disposeWithTimeout(agent: SDKAgent, log: Logger): Promise<"ok" | 
     const disposePromise = agent[Symbol.asyncDispose]().then(() => "ok" as const);
     // タイムアウト後に dispose が遅延 reject した場合の UnhandledPromiseRejection を抑制する
     disposePromise.catch((lateErr) => {
-      log.debug("cursor-provider: late reject after timeout while disposing agent", {
-        errorType: lateErr instanceof Error ? lateErr.constructor.name : typeof lateErr,
-      });
+      if (timedOut) {
+        log.debug("cursor-provider: late reject after timeout while disposing agent", {
+          errorType: lateErr instanceof Error ? lateErr.constructor.name : typeof lateErr,
+        });
+      }
     });
     return await Promise.race([disposePromise, timeoutPromise]);
   } finally {
@@ -28,7 +34,12 @@ async function disposeWithTimeout(agent: SDKAgent, log: Logger): Promise<"ok" | 
   }
 }
 
-export async function disposeAgentSafely(agent: SDKAgent, log: Logger): Promise<void> {
+export async function disposeAgentSafely(
+  agent: SDKAgent,
+  log: Logger,
+  // テストでのモックを容易にするために sleep 関数を注入可能にする
+  _sleep = sleep
+): Promise<void> {
   try {
     const result = await disposeWithTimeout(agent, log);
     if (result === "timeout") {
@@ -40,7 +51,7 @@ export async function disposeAgentSafely(agent: SDKAgent, log: Logger): Promise<
       errorType: err instanceof Error ? err.constructor.name : typeof err,
     });
 
-    await sleep(RETRY_DELAY_MS);
+    await _sleep(RETRY_DELAY_MS);
 
     try {
       const retryResult = await disposeWithTimeout(agent, log);

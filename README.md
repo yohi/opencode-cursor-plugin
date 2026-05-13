@@ -72,7 +72,7 @@ cp .env.example .env
 
 - **Cursor SDK**: `@cursor/sdk@1.0.12`
 
-## 開発（Devcontainer 推奨）
+## 開発（Devcontainer 必須）
 
 1. VS Code または Cursor IDE で「Dev Containers: Reopen in Container」を実行
 2. Devcontainer 内のターミナルで以下を実行

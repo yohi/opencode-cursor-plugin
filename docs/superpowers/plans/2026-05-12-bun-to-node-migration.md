@@ -836,7 +836,7 @@ EOF
 
 ### Phase 3 完了処理
 
-- [x] **Step P3.X: Phase Base の Draft PR を `master` に対して作成**
+- [ ] **Step P3.X: Phase Base の Draft PR を `master` に対して作成**
 
 ```bash
 git checkout feature/phase3_dispose-hardening__base

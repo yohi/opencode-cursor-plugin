@@ -46,6 +46,10 @@ describe("disposeAgentSafely", () => {
       expect.stringContaining("agent dispose failed; retrying once"),
       expect.objectContaining({ errorType: "TypeError" })
     );
+    expect(rawLog.warn).toHaveBeenCalledWith(
+      expect.stringContaining("agent dispose retry failed"),
+      expect.objectContaining({ errorType: "TypeError" })
+    );
     expect(agent[Symbol.asyncDispose]).toHaveBeenCalledTimes(2);
   });
 
@@ -123,7 +127,7 @@ describe("disposeAgentSafely", () => {
     // 1回目の失敗後のリトライ待機を消化
     await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS);
     // リトライ時のタイムアウトを消化
-    vi.advanceTimersByTime(DISPOSE_TIMEOUT_MS);
+    await vi.advanceTimersByTimeAsync(DISPOSE_TIMEOUT_MS);
 
     await expect(result).resolves.toBeUndefined();
 

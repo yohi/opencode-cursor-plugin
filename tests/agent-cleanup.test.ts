@@ -26,11 +26,11 @@ describe("disposeAgentSafely", () => {
     const agent = { [Symbol.asyncDispose]: vi.fn(() => new Promise<void>(() => {})) } as any;
     const result = disposeAgentSafely(agent, log);
 
-    vi.advanceTimersByTime(5_000);
+    vi.advanceTimersByTime(DISPOSE_TIMEOUT_MS);
     await expect(result).resolves.toBeUndefined();
     expect(rawLog.warn).toHaveBeenCalledWith(
       expect.stringContaining("agent dispose timed out; not retrying"),
-      expect.objectContaining({ timeoutMs: 5_000 }),
+      expect.objectContaining({ timeoutMs: DISPOSE_TIMEOUT_MS }),
     );
   });
 
@@ -40,7 +40,7 @@ describe("disposeAgentSafely", () => {
     const agent = { [Symbol.asyncDispose]: vi.fn().mockRejectedValue(new TypeError("boom")) } as any;
 
     const result = disposeAgentSafely(agent, log);
-    await vi.advanceTimersByTimeAsync(200);
+    await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS);
     await expect(result).resolves.toBeUndefined();
     expect(rawLog.warn).toHaveBeenCalledWith(
       expect.stringContaining("agent dispose failed; retrying once"),
@@ -57,13 +57,13 @@ describe("disposeAgentSafely", () => {
 
     const result = disposeAgentSafely(agent, log);
 
-    vi.advanceTimersByTime(5_000); // DISPOSE_TIMEOUT_MS
+    vi.advanceTimersByTime(DISPOSE_TIMEOUT_MS); // DISPOSE_TIMEOUT_MS
     await expect(result).resolves.toBeUndefined();
 
     expect(disposeFn).toHaveBeenCalledTimes(1);
     expect(rawLog.warn).toHaveBeenCalledWith(
       expect.stringContaining("agent dispose timed out; not retrying"),
-      expect.objectContaining({ timeoutMs: 5_000 }),
+      expect.objectContaining({ timeoutMs: DISPOSE_TIMEOUT_MS }),
     );
   });
 
@@ -78,7 +78,7 @@ describe("disposeAgentSafely", () => {
 
     const result = disposeAgentSafely(agent, log);
 
-    await vi.advanceTimersByTimeAsync(200); // RETRY_DELAY_MS
+    await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS); // RETRY_DELAY_MS
     await expect(result).resolves.toBeUndefined();
 
     expect(disposeFn).toHaveBeenCalledTimes(2);
@@ -99,13 +99,44 @@ describe("disposeAgentSafely", () => {
 
     const result = disposeAgentSafely(agent, log);
 
-    await vi.advanceTimersByTimeAsync(200);
+    await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS);
     await expect(result).resolves.toBeUndefined();
 
     expect(disposeFn).toHaveBeenCalledTimes(2);
     expect(rawLog.warn).toHaveBeenCalledWith(
       expect.stringContaining("agent dispose retry failed"),
       expect.objectContaining({ errorType: "TypeError" }),
+    );
+  });
+
+  it("retryResult === 'timeout' 経路: 1 回目 reject → リトライがタイムアウトした場合", async () => {
+    const rawLog = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+    const log = createLogger(rawLog);
+    const disposeFn = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("boom"))
+      .mockImplementationOnce(() => new Promise(() => {})); // リトライ時にハング
+    const agent = { [Symbol.asyncDispose]: disposeFn } as any;
+
+    const result = disposeAgentSafely(agent, log);
+
+    // 1回目の失敗後のリトライ待機を消化
+    await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS);
+    // リトライ時のタイムアウトを消化
+    vi.advanceTimersByTime(DISPOSE_TIMEOUT_MS);
+
+    await expect(result).resolves.toBeUndefined();
+
+    expect(disposeFn).toHaveBeenCalledTimes(2);
+    // 最初の失敗ログ
+    expect(rawLog.warn).toHaveBeenCalledWith(
+      expect.stringContaining("agent dispose failed; retrying once"),
+      expect.objectContaining({ errorType: "TypeError" }),
+    );
+    // リトライタイムアウトログ
+    expect(rawLog.warn).toHaveBeenCalledWith(
+      expect.stringContaining("agent dispose retry timed out"),
+      expect.objectContaining({ timeoutMs: DISPOSE_TIMEOUT_MS }),
     );
   });
 });

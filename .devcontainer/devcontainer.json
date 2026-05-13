@@ -11,8 +11,6 @@
     "vscode": {
       "extensions": [
         "biomejs.biome",
-        "dbaeumer.vscode-eslint",
-        "esbenp.prettier-vscode",
         "vitest.explorer"
       ],
       "settings": {

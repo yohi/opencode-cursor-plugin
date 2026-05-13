@@ -666,7 +666,7 @@ git checkout -b feature/phase3-task1_dispose-tests-red
   });
 ```
 
-- [ ] **Step 3: テストを実行し、追加分が FAIL することを確認 (Red)**
+- [x] **Step 3: テストを実行し、追加分が FAIL することを確認 (Red)**
 
 Devcontainer 内で実行する。
 

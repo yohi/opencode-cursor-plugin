@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/devcontainers/typescript-node@sha256:e37faeaf8e940ea41e840a988d2a0f7ff272b3d29b0b7db1d8861f9d5d1328ec
+FROM mcr.microsoft.com/devcontainers/javascript-node:20@sha256:e7e86bfe03839d7e646e6721e6fa8cc3818ac91a52b03d90f9888e3f4a20a32a
 
 # Enable corepack and pin pnpm version
 RUN corepack enable && corepack prepare pnpm@9.12.0 --activate && [ "$(pnpm --version)" = "9.12.0" ]

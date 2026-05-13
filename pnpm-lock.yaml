@@ -24,7 +24,7 @@ importers:
         version: 4.1.8
     devDependencies:
       '@biomejs/biome':
-        specifier: ^1.9.4
+        specifier: 1.9.4
         version: 1.9.4
       '@opencode-ai/plugin':
         specifier: ^1.14.30

@@ -23,6 +23,7 @@
   "scripts": {
     "build": "tsc --project tsconfig.json --outDir dist --noEmit false",
     "prepublishOnly": "pnpm build",
+    "lint": "biome ci .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -34,6 +35,7 @@
     "zod": "^4.1.8"
   },
   "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
     "@opencode-ai/plugin": "^1.14.30",
     "@types/node": "^20.14.0",
     "typescript": "^5.5.0",

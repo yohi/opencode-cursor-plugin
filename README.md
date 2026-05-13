@@ -72,16 +72,12 @@ cp .env.example .env
 
 - **Cursor SDK**: `@cursor/sdk@1.0.12`
 
-## 開発（Devcontainer 推奨）
+## 開発環境 (Required)
 
-1. VS Code または Cursor IDE で「Dev Containers: Reopen in Container」を実行
-2. Devcontainer 内のターミナルで以下を実行
+ローカル開発・テスト・静的解析はすべて `.devcontainer/` の Devcontainer 内で実行してください。Node.js 20+ と `sqlite3` ネイティブモジュールの再現性を保つため、ホスト OS 上での `pnpm test` / `pnpm typecheck` / `pnpm lint` の実行はレビュー時のエビデンスとして採用されません。
 
-```bash
-pnpm install
-pnpm typecheck
-pnpm test
-```
+- VS Code / Cursor: コマンドパレットから `Dev Containers: Reopen in Container`
+- CLI: `devcontainer up --workspace-folder .` 後、`devcontainer exec --workspace-folder . pnpm <command>`
 
 ## 設定方法
 

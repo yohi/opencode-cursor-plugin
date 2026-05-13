@@ -600,7 +600,7 @@ git pull --ff-only origin feature/phase3_dispose-hardening__base
 git checkout -b feature/phase3-task1_dispose-tests-red
 ```
 
-- [x] **Step 2: テストケースを追記**
+- [ ] **Step 2: テストケースを追記**
 
 `tests/agent-cleanup.test.ts` の `describe("disposeAgentSafely", ...)` ブロック内、既存テストの直後に以下を追加する（既存テストは残す）。
 
@@ -720,7 +720,7 @@ git pull --ff-only origin feature/phase3-task1_dispose-tests-red
 git checkout -b feature/phase3-task2_dispose-impl
 ```
 
-- [x] **Step 2: `src/agent-cleanup.ts` を全面書き換え**
+- [ ] **Step 2: `src/agent-cleanup.ts` を全面書き換え**
 
 `src/agent-cleanup.ts` を以下に置換する（設計書 §4.5 そのまま）。
 
@@ -896,7 +896,7 @@ git pull --ff-only origin feature/phase4_agent-create-finalization__base
 git checkout -b feature/phase4-task1_pool-capacity-10
 ```
 
-- [x] **Step 2: `src/index.ts` の定数を書き換える**
+- [ ] **Step 2: `src/index.ts` の定数を書き換える**
 
 `src/index.ts:11` を以下のとおり書き換える。
 
@@ -973,7 +973,7 @@ git pull --ff-only origin feature/phase4_agent-create-finalization__base
 git checkout -b feature/phase4-task2_agent-create-local-mode
 ```
 
-- [x] **Step 3: 先にテストを更新する (TDD red)**
+- [ ] **Step 3: 先にテストを更新する (TDD red)**
 
 `tests/provider.test.ts` 内で `Agent.create` のモック呼び出しを検証している箇所を特定し、引数アサートに `local: { cwd: <現在の作業ディレクトリ> }` の検証を追加する。テスト中で `process.cwd()` の評価タイミングが本体と一致するように `expect.objectContaining({ apiKey: expect.any(String), model: { id: expect.any(String) }, local: { cwd: process.cwd() } })` を使う。
 
@@ -999,7 +999,7 @@ pnpm test tests/provider.test.ts
 
 期待: `local: { cwd }` を要求するアサートが FAIL する。
 
-- [x] **Step 5: `src/openai-proxy.ts` の `Agent.create` 呼び出しを更新**
+- [ ] **Step 5: `src/openai-proxy.ts` の `Agent.create` 呼び出しを更新**
 
 `src/openai-proxy.ts:160-165` の `Agent.create` 呼び出しを以下に置換する。
 
@@ -1029,7 +1029,7 @@ pnpm test tests/provider.test.ts
         });
 ```
 
-- [x] **Step 6: `src/provider.ts` の型と呼び出しを拡張**
+- [ ] **Step 6: `src/provider.ts` の型と呼び出しを拡張**
 
 `src/provider.ts` の `performAgentCreationAttempt` 周辺 (line 313-345 付近) を以下のとおり改修する。
 

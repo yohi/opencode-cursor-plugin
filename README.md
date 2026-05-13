@@ -72,7 +72,7 @@ cp .env.example .env
 
 - **Cursor SDK**: `@cursor/sdk@1.0.12`
 
-## 開発（Devcontainer 推奨）
+## 開発（Devcontainer 必須）
 
 ### 開発環境 (Required)
 

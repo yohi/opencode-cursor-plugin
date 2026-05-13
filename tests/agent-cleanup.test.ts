@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { disposeAgentSafely } from "../src/agent-cleanup.js";
+import { DISPOSE_TIMEOUT_MS, RETRY_DELAY_MS, disposeAgentSafely } from "../src/agent-cleanup.js";
 import { createLogger } from "../src/logger.js";
 
 describe("disposeAgentSafely", () => {
@@ -32,11 +32,27 @@ describe("disposeAgentSafely", () => {
   });
 
   it("dispose が reject しても rethrow せず warn ログのみ", async () => {
+    const sleepMock = vi.fn().mockResolvedValue(undefined);
     const rawLog = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
     const log = createLogger(rawLog);
     const agent = { [Symbol.asyncDispose]: vi.fn().mockRejectedValue(new TypeError("boom")) } as any;
 
-    await expect(disposeAgentSafely(agent, log)).resolves.toBeUndefined();
+    await expect(disposeAgentSafely(agent, log, sleepMock)).resolves.toBeUndefined();
     expect(rawLog.warn).toHaveBeenCalled();
+    expect(agent[Symbol.asyncDispose]).toHaveBeenCalledTimes(2);
+    expect(sleepMock).toHaveBeenCalledWith(RETRY_DELAY_MS);
+  });
+
+  it("dispose が timeout の場合はリトライしない", async () => {
+    const rawLog = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+    const log = createLogger(rawLog);
+    const agent = { [Symbol.asyncDispose]: vi.fn(() => new Promise<void>(() => {})) } as any;
+
+    const result = disposeAgentSafely(agent, log);
+    vi.advanceTimersByTime(DISPOSE_TIMEOUT_MS);
+    await expect(result).resolves.toBeUndefined();
+
+    vi.advanceTimersByTime(RETRY_DELAY_MS + 1_000);
+    expect(agent[Symbol.asyncDispose]).toHaveBeenCalledTimes(1);
   });
 });

@@ -74,7 +74,7 @@ cp .env.example .env
 
 ## 開発環境 (Required)
 
-ローカル開発・テスト・静的解析はすべて `.devcontainer/` の Devcontainer 内で実行してください。Node.js 20+ と `sqlite3` ネイティブモジュールの再現性を保つため、ホスト OS 上での `pnpm test` / `pnpm typecheck` / `pnpm lint` の実行はレビュー時のエビデンスとして採用されません。
+ローカル開発・テスト・静的解析はすべて `.devcontainer/` の Devcontainer 内で実行してください。Node.js 26+ と `sqlite3` ネイティブモジュールの再現性を保つため、ホスト OS 上での `pnpm test` / `pnpm typecheck` / `pnpm lint` の実行はレビュー時のエビデンスとして採用されません。
 
 - VS Code / Cursor: コマンドパレットから `Dev Containers: Reopen in Container`
 - CLI: `devcontainer up --workspace-folder .` 後、`devcontainer exec --workspace-folder . pnpm <command>`

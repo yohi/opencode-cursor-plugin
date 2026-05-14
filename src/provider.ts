@@ -309,7 +309,7 @@ async function runDoStream(opts: {
   return { stream };
 }
 
-type AgentCreateOpts = {
+export type AgentCreateOpts = {
   apiKey: string;
   model: { id: string };
   local: { cwd: string };

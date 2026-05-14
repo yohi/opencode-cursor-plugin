@@ -354,7 +354,14 @@ async function performAgentCreationAttempt(deps: {
 async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log: Logger }): Promise<SDKAgent> {
   const { Agent } = await import("@cursor/sdk");
   const { log } = deps;
-  const platform = await getInMemoryPlatform();
+
+  let platform: any;
+  try {
+    platform = await getInMemoryPlatform();
+  } catch (err) {
+    logError(log, err, { phase: "platform-setup" });
+    throw err;
+  }
 
   for (let attempt = 1; attempt <= 3; attempt++) {
     const result = await performAgentCreationAttempt({

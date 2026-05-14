@@ -1,5 +1,45 @@
 # Changelog
 
+## [1.6.0](https://github.com/yohi/opencode-cursor-plugin/compare/v1.5.0...v1.6.0) (2026-05-14)
+
+
+### Features
+
+* **agent-create:** Agent.create に local モードを追加し、cwd をローカルに設定 ([9aea28d](https://github.com/yohi/opencode-cursor-plugin/commit/9aea28d8570c083142c336f9c251c20e2754dad2))
+* **agent:** Agent.create に local: { cwd } を明示 (PoC 成功を受けて採用) ([9aa4ab7](https://github.com/yohi/opencode-cursor-plugin/commit/9aa4ab73ece30d110f4fbe8cff84a7c570b8b740))
+* **agent:** POOL容量調整とAgent.createのlocal cwd明示を適用 ([b3706d5](https://github.com/yohi/opencode-cursor-plugin/commit/b3706d58f7173176c6edd144f772ced50b0921c5))
+* **agent:** ローカルモードでのエージェント作成をサポート ([68dd3c2](https://github.com/yohi/opencode-cursor-plugin/commit/68dd3c23460e2dfc6d0e681a430c1b2c58a822e3))
+* **migration:** Bun から Node.js への移行設計の更新と開発環境整備 ([4236e31](https://github.com/yohi/opencode-cursor-plugin/commit/4236e31f48c200bb29acffd5850fa557c517727e))
+* **provider:** プロバイダーモデルのストリーミング対応と型強化 ([e33f979](https://github.com/yohi/opencode-cursor-plugin/commit/e33f979e54c5fb6db758bd864ef0651036b63073))
+
+
+### Bug Fixes
+
+* **agent-cleanup:** dispose非対称リトライを実装し回帰テストを追加 ([b822f20](https://github.com/yohi/opencode-cursor-plugin/commit/b822f204d93882654907ae6e71eec56e726696a2))
+* **agent-cleanup:** エージェント廃棄時のタイムアウト処理を修正し、テスト容易性を向上 ([b6b1822](https://github.com/yohi/opencode-cursor-plugin/commit/b6b18220d2547d90bc5c33c9585d65c4dc76ee0a))
+* **phase1-3:** implement missing document requirements and tests ([5a81dc6](https://github.com/yohi/opencode-cursor-plugin/commit/5a81dc63d42bc28a1ba45808e7ff6b6725f197f6))
+* **provider:** Bun環境でタイマー関数が正しく動作しない問題を修正 ([9f50b9c](https://github.com/yohi/opencode-cursor-plugin/commit/9f50b9cffb4a97dd2808f7067767440df4d44010))
+* **provider:** エラー処理と型安全性を改善 ([5d8d500](https://github.com/yohi/opencode-cursor-plugin/commit/5d8d500377ac95bc95fc66ba0d394b46afd00d39))
+* **provider:** クラッシュ解決のため、モデル作成・リスト表示ロジックと型定義をリファクタリング ([4005ac3](https://github.com/yohi/opencode-cursor-plugin/commit/4005ac340e0a59118190b1c960812e22383eba15))
+* **provider:** プロトタイプ汚染脆弱性対策とストリームリトライ改善 ([ff52ee7](https://github.com/yohi/opencode-cursor-plugin/commit/ff52ee7d5e94012b427cb0c3f1fbc089b3417627))
+* **provider:** プロバイダーのエラー処理とモデルメタデータ取得の堅牢性を向上 ([9aedbcc](https://github.com/yohi/opencode-cursor-plugin/commit/9aedbcc1ba01f38b34bd7517f2caf625d5dffb3e))
+* **provider:** モデルIDのプロトタイプ汚染防止とエラーログ強化 ([2a80864](https://github.com/yohi/opencode-cursor-plugin/commit/2a8086481b793d7c9b70539dae59fc41c87bbb98))
+* **runtime:** Bun から Node.js 20+ への移行でクラッシュを防止 ([b6c1dfc](https://github.com/yohi/opencode-cursor-plugin/commit/b6c1dfc2aeb2219e202f62babd83cac97a276da2))
+* **runtime:** Bun から Node.js 20+ への移行でクラッシュを防止 ([ca9568c](https://github.com/yohi/opencode-cursor-plugin/commit/ca9568c2bb46a01a24811e98294a4bf23e478f93))
+* **sdk:** Bunでのクラッシュ回避のためAgent.createからcloud: {}を削除し、再試行ロジックを強化 ([5965776](https://github.com/yohi/opencode-cursor-plugin/commit/5965776c256793ce873973f613e444d573cf83d8))
+* **sdk:** Bunでのクラッシュ回避のためAgent.createからcloud: {}を削除し、再試行ロジックを強化 ([876ead0](https://github.com/yohi/opencode-cursor-plugin/commit/876ead0a6cda7bb0877c0c05a91d6f46cb3b2ec1))
+* **sdk:** CIでの型チェックエラー(TS2345, TS2454, TS2322)を修正 ([eea3f2f](https://github.com/yohi/opencode-cursor-plugin/commit/eea3f2fca32e9a69c703b766cd6c3aec47edb1e7))
+* **sdk:** Codacy指摘事項への対応とコード品質・安全性の向上 ([fa5c614](https://github.com/yohi/opencode-cursor-plugin/commit/fa5c61424f4844a92843cd41d615bbb039702caf))
+* **sdk:** さらなる型安全性の確保とセキュリティ・正規化の改善 ([3095d47](https://github.com/yohi/opencode-cursor-plugin/commit/3095d476a2d45b13e055a5fd2d39358381c9a5f3))
+* **sdk:** 指摘事項に基づくリファクタリングと不要なデバッグスクリプトの削除 ([7c62ba1](https://github.com/yohi/opencode-cursor-plugin/commit/7c62ba1532080ab7aeb4f1e311601318e9da8cd1))
+* **stream-proxy:** 誤った abortSignal チェックを修正し、テストの失敗を解消 ([45fd20e](https://github.com/yohi/opencode-cursor-plugin/commit/45fd20eebb5caeaf88e5b245017a73e960e261d7))
+
+
+### Performance Improvements
+
+* **agent-pool:** POOL_CAPACITY 8 → 10 ([0c471ef](https://github.com/yohi/opencode-cursor-plugin/commit/0c471ef773fda3501a38354799a506306d54988c))
+* **agent-pool:** POOL_CAPACITY を 8 → 10 に引き上げ dispose レース緩和 ([a693fad](https://github.com/yohi/opencode-cursor-plugin/commit/a693fadf682bff8445e319cee0fbdb5ed50b760f))
+
 ## [1.5.0](https://github.com/yohi/opencode-cursor-plugin/compare/v1.4.0...v1.5.0) (2026-05-10)
 
 

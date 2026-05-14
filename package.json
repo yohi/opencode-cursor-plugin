@@ -1,6 +1,6 @@
 {
   "name": "@yohi/opencode-cursor-plugin",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "OpenCode provider plugin that exposes Cursor SDK models as a primary LLM provider",
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"

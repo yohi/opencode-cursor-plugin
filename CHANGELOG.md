@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.1](https://github.com/yohi/opencode-cursor-plugin/compare/v1.6.0...v1.6.1) (2026-05-14)
+
+
+### Bug Fixes
+
+* **ci:** update Node.js version to 26 in workflows and update lockfile ([3b83775](https://github.com/yohi/opencode-cursor-plugin/commit/3b837759b580f50e904a986e01a52d732690750a))
+
 ## [1.6.0](https://github.com/yohi/opencode-cursor-plugin/compare/v1.5.0...v1.6.0) (2026-05-14)
 
 

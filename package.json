@@ -30,7 +30,7 @@
     "test:e2e": "bash scripts/e2e-cursor-provider.sh"
   },
   "dependencies": {
-    "@cursor/sdk": "1.0.12",
+    "@cursor/sdk": "1.0.13",
     "dotenv": "^16.4.5",
     "zod": "^4.1.8"
   },

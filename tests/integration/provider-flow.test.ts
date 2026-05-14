@@ -6,6 +6,8 @@ import { createProviderHook } from "../../src/provider.js";
 vi.mock("@cursor/sdk", async () => {
   const agents: any[] = [];
   return {
+    createAgentPlatform: vi.fn().mockResolvedValue({}),
+    InMemoryRunEventNotifier: class {},
     Cursor: {
       models: {
         list: vi.fn().mockResolvedValue([{ id: "composer-2", name: "C2", contextWindow: 200_000 }]),

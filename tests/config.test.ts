@@ -15,6 +15,8 @@ vi.mock("@cursor/sdk", () => ({
       list: vi.fn().mockResolvedValue([]),
     },
   },
+  createAgentPlatform: vi.fn().mockResolvedValue({}),
+  InMemoryRunEventNotifier: class {},
 }));
 
 describe("ensureCursorProviderConfig", () => {

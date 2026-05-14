@@ -14,6 +14,7 @@ import type { Logger } from "./logger.js";
 import { STATIC_FALLBACK_MODELS, makeModelMeta, type FallbackModel } from "./models.js";
 import { createStream } from "./stream-proxy.js";
 import { translate, type ModelV2Prompt } from "./translator.js";
+import { getInMemoryPlatform } from "./platform.js";
 
 const MODELS_LIST_TIMEOUT_MS = 10_000;
 type RawSDKModel = {
@@ -313,6 +314,7 @@ export type AgentCreateOpts = {
   apiKey: string;
   model: { id: string };
   local: { cwd: string };
+  platform?: unknown;
 };
 
 /**
@@ -322,16 +324,18 @@ async function performAgentCreationAttempt(deps: {
   Agent: { create: (opts: AgentCreateOpts) => Promise<unknown> };
   apiKey: string;
   modelId: string;
+  platform: any;
   log: Logger;
   attempt: number;
 }): Promise<{ agent: SDKAgent } | { error: unknown; canRetry: boolean; delay: number }> {
-  const { Agent, apiKey, modelId, log, attempt } = deps;
+  const { Agent, apiKey, modelId, platform, log, attempt } = deps;
   try {
     log.debug("cursor-provider: calling Agent.create", { modelId, attempt });
     const agent = (await Agent.create({
       apiKey,
       model: { id: modelId },
       local: { cwd: process.cwd() },
+      platform,
     })) as SDKAgent;
     return { agent };
   } catch (err) {
@@ -351,8 +355,21 @@ async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log
   const { Agent } = await import("@cursor/sdk");
   const { log } = deps;
 
+  let platform: any;
+  try {
+    platform = await getInMemoryPlatform();
+  } catch (err) {
+    logError(log, err, { phase: "platform-setup" });
+    throw err;
+  }
+
   for (let attempt = 1; attempt <= 3; attempt++) {
-    const result = await performAgentCreationAttempt({ Agent: Agent as unknown as { create: (opts: AgentCreateOpts) => Promise<unknown> }, ...deps, attempt });
+    const result = await performAgentCreationAttempt({
+      Agent: Agent as unknown as { create: (opts: AgentCreateOpts) => Promise<unknown> },
+      ...deps,
+      platform,
+      attempt,
+    });
 
     if ("agent" in result) return result.agent;
     if (!result.canRetry) {

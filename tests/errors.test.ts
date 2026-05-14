@@ -22,6 +22,8 @@ vi.mock("@cursor/sdk", () => {
   };
 
   return {
+    createAgentPlatform: vi.fn().mockResolvedValue({}),
+    InMemoryRunEventNotifier: class {},
     AuthenticationError: createMockError("AuthenticationError"),
     ConfigurationError: createMockError("ConfigurationError"),
     RateLimitError: createMockError("RateLimitError"),

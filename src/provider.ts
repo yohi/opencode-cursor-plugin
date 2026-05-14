@@ -324,13 +324,13 @@ async function performAgentCreationAttempt(deps: {
   Agent: { create: (opts: AgentCreateOpts) => Promise<unknown> };
   apiKey: string;
   modelId: string;
+  platform: any;
   log: Logger;
   attempt: number;
 }): Promise<{ agent: SDKAgent } | { error: unknown; canRetry: boolean; delay: number }> {
-  const { Agent, apiKey, modelId, log, attempt } = deps;
+  const { Agent, apiKey, modelId, platform, log, attempt } = deps;
   try {
     log.debug("cursor-provider: calling Agent.create", { modelId, attempt });
-    const platform = await getInMemoryPlatform();
     const agent = (await Agent.create({
       apiKey,
       model: { id: modelId },
@@ -354,9 +354,15 @@ async function performAgentCreationAttempt(deps: {
 async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log: Logger }): Promise<SDKAgent> {
   const { Agent } = await import("@cursor/sdk");
   const { log } = deps;
+  const platform = await getInMemoryPlatform();
 
   for (let attempt = 1; attempt <= 3; attempt++) {
-    const result = await performAgentCreationAttempt({ Agent: Agent as unknown as { create: (opts: AgentCreateOpts) => Promise<unknown> }, ...deps, attempt });
+    const result = await performAgentCreationAttempt({
+      Agent: Agent as unknown as { create: (opts: AgentCreateOpts) => Promise<unknown> },
+      ...deps,
+      platform,
+      attempt,
+    });
 
     if ("agent" in result) return result.agent;
     if (!result.canRetry) {

@@ -152,7 +152,15 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
   } else {
     const maxRetries = 3;
     let attempt = 0;
-    const { Agent } = (await import("@cursor/sdk")) as { Agent: typeof import("@cursor/sdk").Agent };
+    const { Agent } = (await import("@cursor/sdk")) as unknown as {
+      Agent: {
+        create: (opts: {
+          apiKey: string;
+          model: { id: string };
+          local: { cwd: string };
+        }) => Promise<any>;
+      };
+    };
 
     while (attempt < maxRetries) {
       attempt++;
@@ -162,6 +170,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
         agent = await Agent.create({
           apiKey,
           model: { id: modelId },
+          local: { cwd: process.cwd() },
         });
         messageToSend = translated.fullPromptOnMiss;
         log.debug("cursor-openai-proxy: pool miss", { prefixHash: translated.prefixHash.slice(0, 8) });

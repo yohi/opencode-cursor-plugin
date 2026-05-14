@@ -309,11 +309,17 @@ async function runDoStream(opts: {
   return { stream };
 }
 
+type AgentCreateOpts = {
+  apiKey: string;
+  model: { id: string };
+  local: { cwd: string };
+};
+
 /**
  * Single attempt to create an agent with error classification and logging.
  */
 async function performAgentCreationAttempt(deps: {
-  Agent: { create: (opts: { apiKey: string; model: { id: string } }) => Promise<unknown> };
+  Agent: { create: (opts: AgentCreateOpts) => Promise<unknown> };
   apiKey: string;
   modelId: string;
   log: Logger;
@@ -322,7 +328,11 @@ async function performAgentCreationAttempt(deps: {
   const { Agent, apiKey, modelId, log, attempt } = deps;
   try {
     log.debug("cursor-provider: calling Agent.create", { modelId, attempt });
-    const agent = (await Agent.create({ apiKey, model: { id: modelId } })) as SDKAgent;
+    const agent = (await Agent.create({
+      apiKey,
+      model: { id: modelId },
+      local: { cwd: process.cwd() },
+    })) as SDKAgent;
     return { agent };
   } catch (err) {
     const decision = classifyError(err, { phase: "create" });
@@ -342,7 +352,7 @@ async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log
   const { log } = deps;
 
   for (let attempt = 1; attempt <= 3; attempt++) {
-    const result = await performAgentCreationAttempt({ Agent: Agent as unknown as { create: (opts: { apiKey: string; model: { id: string } }) => Promise<unknown> }, ...deps, attempt });
+    const result = await performAgentCreationAttempt({ Agent: Agent as unknown as { create: (opts: AgentCreateOpts) => Promise<unknown> }, ...deps, attempt });
 
     if ("agent" in result) return result.agent;
     if (!result.canRetry) {

@@ -7,6 +7,7 @@ import type { AgentPool } from "./agent-pool.js";
 import { fingerprintApiKey } from "./agent-pool.js";
 import { disposeAgentSafely } from "./agent-cleanup.js";
 import { classifyError, logError } from "./errors.js";
+import type { AgentCreateOpts } from "./provider.js";
 
 function extractErrorInfo(err: unknown): { name: string; code?: string | number; message: string; details?: unknown } {
   const isObj = typeof err === "object" && err !== null;
@@ -152,17 +153,22 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, log: Logger
   } else {
     const maxRetries = 3;
     let attempt = 0;
-    const { Agent } = (await import("@cursor/sdk")) as { Agent: typeof import("@cursor/sdk").Agent };
+    const { Agent } = (await import("@cursor/sdk")) as unknown as {
+      Agent: {
+        create: (opts: AgentCreateOpts) => Promise<unknown>;
+      };
+    };
 
     while (attempt < maxRetries) {
       attempt++;
       try {
         log.debug("cursor-openai-proxy: calling Agent.create (local mode)", { modelId });
 
-        agent = await Agent.create({
+        agent = (await Agent.create({
           apiKey,
           model: { id: modelId },
-        });
+          local: { cwd: process.cwd() },
+        })) as SDKAgent;
         messageToSend = translated.fullPromptOnMiss;
         log.debug("cursor-openai-proxy: pool miss", { prefixHash: translated.prefixHash.slice(0, 8) });
         break;

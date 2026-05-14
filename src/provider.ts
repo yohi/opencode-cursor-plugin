@@ -309,6 +309,12 @@ async function runDoStream(opts: {
   return { stream };
 }
 
+type AgentCreateOpts = {
+  apiKey: string;
+  model: { id: string };
+  local: { cwd: string };
+};
+
 /**
  * Single attempt to create an agent with error classification and logging.
  */
@@ -340,12 +346,6 @@ async function performAgentCreationAttempt(deps: {
     };
   }
 }
-
-type AgentCreateOpts = {
-  apiKey: string;
-  model: { id: string };
-  local: { cwd: string };
-};
 
 async function createAgentWithRetry(deps: { apiKey: string; modelId: string; log: Logger }): Promise<SDKAgent> {
   const { Agent } = await import("@cursor/sdk");

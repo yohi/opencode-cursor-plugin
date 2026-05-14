@@ -18,7 +18,7 @@ OpenCode のメイン LLM プロバイダーとして Cursor Headless SDK (`@cur
 | モデル一覧 | 動的取得 + 静的フォールバック | 最新モデル反映と起動信頼性の両立 |
 | エージェント性 | Pure LLM モード | 二重エージェント問題回避 |
 | 履歴の橋渡し | ハッシュ＋プール最適化 / フルプロンプト fallback | レイテンシ最小化と新規／分岐会話への耐性両立 |
-| プールライフサイクル | LRU 上限 8、Exclusive Checkout、close 5 秒タイムアウト | 予測可能でリソース漏洩や並列利用時の破損なし |
+| プールライフサイクル | LRU 上限 10、Exclusive Checkout、close 5 秒タイムアウト・非対称リトライ | sqlite3 競合と二重解放を防ぐ |
 | ストリームイベント | text 通常 / thinking → reasoning / tool-call → 警告 | Cursor の表現力を活用しつつ Pure LLM 建前を可視化 |
 | 認証 | env var + `AuthHook` (browser OAuth / api) | UX 改善。ブラウザ OAuth とリフレッシュトークンに対応 |
 | プロバイダー登録 | `config` hook で `provider.cursor` を自動注入 | OpenCode >= 1.14.0 で provider 登録を成立させるため |
@@ -67,7 +67,7 @@ OpenCode のメイン LLM プロバイダーとして Cursor Headless SDK (`@cur
 - `translator.ts`: 履歴ハッシュ化 (`role="system"` と `role="user"` のみ対象) + プロンプト変換
 - `agent-pool.ts`: LRU キャッシュ。排他的チェックアウト (`tryGet`), `put`, `closeAll`
 - `stream-proxy.ts`: `agent.send` → `ReadableStream` 変換、二重終端ガード
-- `agent-cleanup.ts`: `disposeAgentSafely` (5sタイムアウト付き非同期破棄)
+- `agent-cleanup.ts`: `disposeAgentSafely` (5sタイムアウト + 例外時のみ1回リトライの非対称破棄)
 - `logger.ts`: OpenCode ロガーのラップ
 - `errors.ts`: Cursor SDK エラーのマッピング、リトライ戦略判定
 
@@ -100,6 +100,10 @@ OpenCode のメイン LLM プロバイダーとして Cursor Headless SDK (`@cur
     - モデル ID の文字列配列: `["composer-2", "gpt-4o"]`
     - または、表示名を含むオブジェクト配列: `[{ "id": "composer-2", "name": "Cursor Composer" }]`
 - **挙動**: ユーザー指定がある場合はそれを優先し、未指定時は `STATIC_FALLBACK_MODELS` を使用します。システムは `models()` フック内でこのリストを参照し、UI に表示するプロバイダーモデルを構築します。
+
+### 5.6 Agent 生成とネイティブ依存
+- `Agent.create` 呼び出し時、ネイティブモジュール (`sqlite3`) のワーキングディレクトリ解決を堅牢化するため、明示的に `local: { cwd: process.cwd() }` を指定します。
+- **注意:** `local` オプションは `@cursor/sdk@1.0.12` 時点で公開型定義に含まれていない undocumented API です。SDK をアップグレードする際は動作の継続性を必ず再確認してください。
 
 ## 6. Tool-call 関連イベントの扱い
 - **ToolCallStartedUpdate**: Stream に text-delta として警告メッセージを **1 回のみ** 挿入し、ログ出力します。Pure LLM モードであるため、実行は行われません。

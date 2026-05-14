@@ -1,37 +1,27 @@
-# Agent Instructions (AGENTS.md)
+# opencode-cursor-plugin Agent Instructions
 
-Welcome to the `opencode-cursor-plugin` project. This guide provides the essential context you need to assist effectively.
+**WHAT:** OpenCode Provider plugin exposing Cursor Headless SDK (`@cursor/sdk`) models.
+**WHY:** Replaces the legacy `cursor_prompt` tool with a standard ProviderHook, injecting `provider.cursor` for OpenCode integration.
 
-<project_overview>
-This is an OpenCode Provider plugin that exposes Cursor Headless SDK (`@cursor/sdk`) models as the primary LLM provider. It replaces the legacy `cursor_prompt` custom tool with a standard ProviderHook implementation and injects `provider.cursor` through the plugin config hook so OpenCode registers the provider correctly.
-</project_overview>
+## 🗺️ Progressive Disclosure
+To keep context lean, detailed information is separated. Read these when relevant:
+- `SPEC.md`: Architecture design, state lifecycle (AgentPool), data flow.
+- `README.md`: User setup, installation, environment variables.
 
-<tech_stack>
-- **Language:** TypeScript (Node.js >= 20.0.0)
-- **Package Manager:** `pnpm` (v9.12.0) - **Do not use npm or yarn.**
-- **Testing Framework:** `vitest`
-- **Validation:** `zod`
-</tech_stack>
+## 🛠️ Tech Stack & How to Run
+**MUST RUN INSIDE DEVCONTAINER:** Open the project in the Devcontainer and run commands from the repository root, not from the .devcontainer/ directory. This ensures native module (`sqlite3`) compatibility.
 
-<commands>
-To verify your changes, please use the following commands. **Required:** these MUST be run inside the provided Devcontainer (`.devcontainer/`) for native module (`sqlite3`) reproducibility. Running them on the host OS is not accepted as evidence in PR reviews.
-- Install dependencies: `pnpm install` (**Never** use npm or yarn)
-- Type-checking: `pnpm typecheck`
-- Unit tests: `pnpm test`
-- Manual E2E helper: `pnpm test:e2e`
-</commands>
+- **Stack:** TypeScript (Node.js >= 20), pnpm, Vitest, Biome, Zod.
+- **Install:** `pnpm install --frozen-lockfile` (Never use npm/yarn)
+- **Lint/Format:** `pnpm lint` (Rely on Biome for styling; do not guess formatting rules)
+- **Typecheck:** `pnpm typecheck`
+- **Test:** `pnpm test`
+- **E2E:** `pnpm test:e2e`
 
-<documentation_map>
-To keep this file lightweight (Progressive Disclosure), detailed context is externalized. Please read the following documents when relevant to your task:
-
-- **`SPEC.md`**: Contains the full architectural design, state lifecycle (e.g., AgentPool exclusive checkout), error handling, and data flow. **Read this before making any architectural changes to `src/` modules.**
-- **`README.md`**: Contains user-facing setup instructions, environment variable requirements, and plugin installation guides.
-</documentation_map>
-
-<guidelines>
-- **Safety First:** **Never** stage or commit sensitive files like `.env`, `.git`, or private keys.
-- **Verification:** **Always** ensure `pnpm typecheck` and `pnpm test` pass before considering a task complete. **Do not** bypass security checks.
-- **Provider verification:** After config changes, confirm `opencode models cursor` lists `cursor/composer-2` (or the whitelisted model set).
-- **Scope:** Focus on the requested task. **Do not** perform unrelated "cleanups" or modify core infrastructure (like GitHub Workflows or Devcontainer configs) unless explicitly asked.
-- **Logging:** Use the custom `Logger` wrapper. **Never** log sensitive values (e.g., `CURSOR_API_KEY`, full prompts/responses). Use lengths, hashes, or fingerprints for telemetry.
-</guidelines>
+## 📋 Guidelines
+1. **Keep it focused:** Do not perform unrelated refactoring or modify core infrastructure (like Devcontainer config) unless explicitly asked.
+2. **Safety:** Never stage or commit secrets (e.g., `.env`, private keys).
+3. **Logging:** Use the custom `Logger` wrapper. Never log sensitive values like `CURSOR_API_KEY` or full prompts/responses. Use lengths/hashes.
+4. **Verification:** Always verify changes by running `pnpm lint`, `pnpm typecheck`, and `pnpm test` before completion.
+5. **Let Tools Work:** Delegate code style to the linter (`pnpm lint`).
+6. **Provider verification:** After config changes, confirm `opencode models cursor` lists `cursor/composer-2` (or the whitelisted model set).

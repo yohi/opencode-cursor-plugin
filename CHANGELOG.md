@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.7.0](https://github.com/yohi/opencode-cursor-plugin/compare/v1.6.1...v1.7.0) (2026-05-14)
+
+
+### Features
+
+* update @cursor/sdk to 1.0.13 and introduce in-memory platform ([8bc7ed8](https://github.com/yohi/opencode-cursor-plugin/commit/8bc7ed882adf194422d8b5fa86f2533c6f27467e))
+* update @cursor/sdk to 1.0.13 and introduce in-memory platform ([f8c33f1](https://github.com/yohi/opencode-cursor-plugin/commit/f8c33f124296901a98b511a4effbe2b430268db9))
+
+
+### Bug Fixes
+
+* **provider:** address code review issues for in-memory platform ([4c4639e](https://github.com/yohi/opencode-cursor-plugin/commit/4c4639ebbc53a8e4602c0b6e02738005c18b0e3d))
+* **provider:** wrap getInMemoryPlatform with try/catch and log errors ([650ebc0](https://github.com/yohi/opencode-cursor-plugin/commit/650ebc078ce945b5a4ba5743ce7ecb2477e1bcab))
+
 ## [1.6.1](https://github.com/yohi/opencode-cursor-plugin/compare/v1.6.0...v1.6.1) (2026-05-14)
 
 

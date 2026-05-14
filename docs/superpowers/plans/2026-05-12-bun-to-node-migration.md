@@ -870,7 +870,7 @@ Task 4.2 の実装内容は Phase 2 の PoC 判定結果に応じて切り替わ
 
 ### Phase 4 セットアップ
 
-- [ ] **Step P4.0: Phase Base ブランチを作成**
+- [x] **Step P4.0: Phase Base ブランチを作成**
 
 ```bash
 git fetch origin
@@ -888,7 +888,7 @@ git push -u origin feature/phase4_agent-create-finalization__base
 **Files:**
 - Modify: `src/index.ts` (11 行目)
 
-- [ ] **Step 1: Task ブランチを作成**
+- [x] **Step 1: Task ブランチを作成**
 
 ```bash
 git checkout feature/phase4_agent-create-finalization__base
@@ -896,7 +896,7 @@ git pull --ff-only origin feature/phase4_agent-create-finalization__base
 git checkout -b feature/phase4-task1_pool-capacity-10
 ```
 
-- [ ] **Step 2: `src/index.ts` の定数を書き換える**
+- [x] **Step 2: `src/index.ts` の定数を書き換える**
 
 `src/index.ts:11` を以下のとおり書き換える。
 
@@ -910,7 +910,7 @@ const POOL_CAPACITY = 8;
 const POOL_CAPACITY = 10; // Node 20 移行で生成・破棄サイクルを緩和し、sqlite3 dispose 競合を抑制
 ```
 
-- [ ] **Step 3: Devcontainer 内で型検査・Lint・テストを実行**
+- [x] **Step 3: Devcontainer 内で型検査・Lint・テストを実行**
 
 ```bash
 pnpm typecheck
@@ -920,7 +920,7 @@ pnpm test
 
 期待: 3 コマンドすべて exit 0。
 
-- [ ] **Step 4: コミット**
+- [x] **Step 4: コミット**
 
 ```bash
 git add src/index.ts
@@ -928,7 +928,7 @@ git commit -m "perf(agent-pool): POOL_CAPACITY を 8 → 10 に引き上げ disp
 git push -u origin feature/phase4-task1_pool-capacity-10
 ```
 
-- [ ] **Step 5: Phase Base に向けた Draft PR を作成**
+- [x] **Step 5: Phase Base に向けた Draft PR を作成**
 
 ```bash
 gh pr create --draft \
@@ -940,7 +940,7 @@ gh pr create --draft \
 - `src/index.ts` の `POOL_CAPACITY` を 10 に引き上げ、agent の生成・破棄頻度を低減して `sqlite3` dispose 競合を緩和
 
 ## Test plan
-- [ ] Devcontainer 内で `pnpm typecheck && pnpm lint && pnpm test` が成功
+- [x] Devcontainer 内で `pnpm typecheck && pnpm lint && pnpm test` が成功
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
@@ -961,11 +961,11 @@ EOF
 - Modify: `tests/provider.test.ts` (Agent.create モックの引数アサート箇所)
 - Modify: `tests/integration/provider-flow.test.ts` (モックが `local` を受理するよう調整 / 必要時のみ)
 
-- [ ] **Step 1: PoC 結果を確認**
+- [x] **Step 1: PoC 結果を確認**
 
 Phase 2 PR の判定結果を確認する。「PoC 成功」でない場合は本 Task をスキップ。
 
-- [ ] **Step 2: Task ブランチを作成**
+- [x] **Step 2: Task ブランチを作成**
 
 ```bash
 git checkout feature/phase4_agent-create-finalization__base
@@ -973,7 +973,7 @@ git pull --ff-only origin feature/phase4_agent-create-finalization__base
 git checkout -b feature/phase4-task2_agent-create-local-mode
 ```
 
-- [ ] **Step 3: 先にテストを更新する (TDD red)**
+- [x] **Step 3: 先にテストを更新する (TDD red)**
 
 `tests/provider.test.ts` 内で `Agent.create` のモック呼び出しを検証している箇所を特定し、引数アサートに `local: { cwd: <現在の作業ディレクトリ> }` の検証を追加する。テスト中で `process.cwd()` の評価タイミングが本体と一致するように `expect.objectContaining({ apiKey: expect.any(String), model: { id: expect.any(String) }, local: { cwd: process.cwd() } })` を使う。
 
@@ -991,7 +991,7 @@ expect(AgentMock.create).toHaveBeenCalledWith(
 
 該当 `it` ブロックが複数ある場合はすべてに同等のアサートを追加する。
 
-- [ ] **Step 4: テストを実行し、追加分が FAIL することを確認 (Red)**
+- [x] **Step 4: テストを実行し、追加分が FAIL することを確認 (Red)**
 
 ```bash
 pnpm test tests/provider.test.ts
@@ -999,7 +999,7 @@ pnpm test tests/provider.test.ts
 
 期待: `local: { cwd }` を要求するアサートが FAIL する。
 
-- [ ] **Step 5: `src/openai-proxy.ts` の `Agent.create` 呼び出しを更新**
+- [x] **Step 5: `src/openai-proxy.ts` の `Agent.create` 呼び出しを更新**
 
 `src/openai-proxy.ts:160-165` の `Agent.create` 呼び出しを以下に置換する。
 
@@ -1029,7 +1029,7 @@ pnpm test tests/provider.test.ts
         });
 ```
 
-- [ ] **Step 6: `src/provider.ts` の型と呼び出しを拡張**
+- [x] **Step 6: `src/provider.ts` の型と呼び出しを拡張**
 
 `src/provider.ts` の `performAgentCreationAttempt` 周辺 (line 313-345 付近) を以下のとおり改修する。
 
@@ -1055,7 +1055,7 @@ type AgentCreateOpts = {
 };
 ```
 
-(c) 関数本体の `Agent.create` 呼び出し (325 行) を以下に置換:
+(c) 関数本体의 `Agent.create` 呼び出し (325 行) を以下に置換:
 
 置換前:
 ```ts
@@ -1084,7 +1084,7 @@ type AgentCreateOpts = {
     const result = await performAgentCreationAttempt({ Agent: Agent as unknown as { create: (opts: AgentCreateOpts) => Promise<unknown> }, ...deps, attempt });
 ```
 
-- [ ] **Step 7: 統合テストモックを必要に応じて調整**
+- [x] **Step 7: 統合テストモックを必要に応じて調整**
 
 `tests/integration/provider-flow.test.ts` の `Agent.create` モックが追加プロパティ `local` を受理する形になっているか確認する（`vi.fn().mockResolvedValue(...)` 形式であれば追加対応不要）。引数のシグネチャをチェックしているモックがある場合のみ修正する。
 
@@ -1096,7 +1096,7 @@ pnpm test tests/integration/provider-flow.test.ts
 
 > **注意:** 本 Step で `tests/integration/provider-flow.test.ts` を変更した場合のみ、Step 9 の `git add` 対象に同ファイルを含めること。未変更の場合は `git add` 対象から外す。
 
-- [ ] **Step 8: 全テストが PASS することを確認 (Green)**
+- [x] **Step 8: 全テストが PASS することを確認 (Green)**
 
 ```bash
 pnpm typecheck
@@ -1106,7 +1106,7 @@ pnpm test
 
 期待: 3 コマンドすべて exit 0。
 
-- [ ] **Step 9: コミット**
+- [x] **Step 9: コミット**
 
 Step 7 で `tests/integration/provider-flow.test.ts` に変更を加えた場合のみ、同ファイルを `git add` 対象に含める（未変更なら外す）。
 
@@ -1119,7 +1119,7 @@ git commit -m "feat(agent): Agent.create に local: { cwd: process.cwd() } を�
 git push -u origin feature/phase4-task2_agent-create-local-mode
 ```
 
-- [ ] **Step 10: Phase Base に向けた Draft PR を作成**
+- [x] **Step 10: Phase Base に向けた Draft PR を作成**
 
 ```bash
 gh pr create --draft \
@@ -1133,10 +1133,10 @@ gh pr create --draft \
 - ネイティブモジュール (sqlite3) のワーキングディレクトリ解決をデフォルト挙動に依存させない
 
 ## Test plan
-- [ ] Devcontainer 内で `pnpm test` 全 PASS
-- [ ] `pnpm typecheck` PASS
-- [ ] `pnpm lint` PASS
-- [ ] Phase 2 PoC の判定が「成功」であることを確認 (#<Phase2_PR>)
+- [x] Devcontainer 内で `pnpm test` 全 PASS
+- [x] `pnpm typecheck` PASS
+- [x] `pnpm lint` PASS
+- [x] Phase 2 PoC の判定が「成功」であることを確認 (#<Phase2_PR>)
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
@@ -1145,7 +1145,7 @@ EOF
 
 ### Phase 4 完了処理
 
-- [ ] **Step P4.X: Phase Base の Draft PR を `master` に対して作成**
+- [x] **Step P4.X: Phase Base の Draft PR を `master` に対して作成**
 
 ```bash
 git checkout feature/phase4_agent-create-finalization__base
@@ -1171,8 +1171,8 @@ gh pr create --draft \
 5. Bun API → Node API 置換: ソース側は既に完了済み（設計書 §4.9）
 
 ## Test plan
-- [ ] Devcontainer 内で `pnpm typecheck && pnpm lint && pnpm test` が成功する
-- [ ] CI ワークフロー (`.github/workflows/ci.yml`, ubuntu-slim) が全 step 成功
+- [x] Devcontainer 内で `pnpm typecheck && pnpm lint && pnpm test` が成功する
+- [x] CI ワークフロー (`.github/workflows/ci.yml`, ubuntu-slim) が全 step 成功
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF

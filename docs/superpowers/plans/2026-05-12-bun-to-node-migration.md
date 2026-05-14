@@ -83,7 +83,7 @@ Phase Base ブランチ `feature/phase1_devcontainer-tooling__base` を `master`
 
 ### Phase 1 セットアップ
 
-- [ ] **Step P1.0: Phase Base ブランチを作成**
+- [x] **Step P1.0: Phase Base ブランチを作成**
 
 ```bash
 git fetch origin
@@ -102,7 +102,7 @@ git push -u origin feature/phase1_devcontainer-tooling__base
 - Modify: `.devcontainer/Dockerfile`
 - Modify: `.devcontainer/devcontainer.json`
 
-- [ ] **Step 1: Task ブランチを作成**
+- [x] **Step 1: Task ブランチを作成**
 
 ```bash
 git checkout feature/phase1_devcontainer-tooling__base
@@ -110,7 +110,7 @@ git pull --ff-only origin feature/phase1_devcontainer-tooling__base
 git checkout -b feature/phase1-task1_devcontainer-update
 ```
 
-- [ ] **Step 2: Dockerfile を javascript-node:20 ベースに書き換える**
+- [x] **Step 2: Dockerfile を javascript-node:20 ベースに書き換える**
 
 `.devcontainer/Dockerfile` を以下に置換する。
 
@@ -125,7 +125,7 @@ RUN corepack enable \
 USER node
 ```
 
-- [ ] **Step 3: devcontainer.json を更新（Node20 ガード + 拡張機能/設定）**
+- [x] **Step 3: devcontainer.json を更新（Node20 ガード + 拡張機能/設定）**
 
 `.devcontainer/devcontainer.json` を以下に置換する。
 
@@ -150,7 +150,7 @@ USER node
 }
 ```
 
-- [ ] **Step 4: Devcontainer を再ビルドして起動を検証する**
+- [x] **Step 4: Devcontainer を再ビルドして起動を検証する**
 
 Devcontainer 拡張から `Dev Containers: Rebuild Container` を実行する。
 （CLI 利用時: `devcontainer up --workspace-folder . --remove-existing-container`）
@@ -162,7 +162,7 @@ node --version    # → v20.x.x
 pnpm --version    # → 9.12.0
 ```
 
-- [ ] **Step 5: Devcontainer 内で既存スクリプトの動作を確認する**
+- [x] **Step 5: Devcontainer 内で既存スクリプトの動作を確認する**
 
 ```bash
 pnpm install --frozen-lockfile
@@ -172,7 +172,7 @@ pnpm test
 
 期待: 3 コマンドすべて exit code 0 で終了。
 
-- [ ] **Step 6: コミット**
+- [x] **Step 6: コミット**
 
 ```bash
 git add .devcontainer/Dockerfile .devcontainer/devcontainer.json
@@ -180,7 +180,7 @@ git commit -m "chore(devcontainer): Node20 ベースイメージへ移行し pos
 git push -u origin feature/phase1-task1_devcontainer-update
 ```
 
-- [ ] **Step 7: Phase Base に向けた Draft PR を作成**
+- [x] **Step 7: Phase Base に向けた Draft PR を作成**
 
 ```bash
 gh pr create --draft \
@@ -193,8 +193,8 @@ gh pr create --draft \
 - devcontainer.json で Biome / Vitest Explorer 拡張を有効化し、postCreate に Node 20 ガードを追加
 
 ## Test plan
-- [ ] Devcontainer を再ビルドし、コンテナ内で `node --version` が v20 系であることを確認
-- [ ] Devcontainer 内で `pnpm install --frozen-lockfile && pnpm typecheck && pnpm test` がすべて成功すること
+- [x] Devcontainer を再ビルドし、コンテナ内で `node --version` が v20 系であることを確認
+- [x] Devcontainer 内で `pnpm install --frozen-lockfile && pnpm typecheck && pnpm test` がすべて成功すること
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
@@ -210,7 +210,7 @@ EOF
 - Modify: `package.json`
 - (lock 更新): `pnpm-lock.yaml`
 
-- [ ] **Step 1: Task ブランチを作成**
+- [x] **Step 1: Task ブランチを作成**
 
 ```bash
 git checkout feature/phase1_devcontainer-tooling__base
@@ -218,7 +218,7 @@ git pull --ff-only origin feature/phase1_devcontainer-tooling__base
 git checkout -b feature/phase1-task2_biome-lint-script
 ```
 
-- [ ] **Step 2: Devcontainer 内で Biome を devDependency として追加**
+- [x] **Step 2: Devcontainer 内で Biome を devDependency として追加**
 
 Devcontainer 内シェルで実行する。
 
@@ -226,7 +226,7 @@ Devcontainer 内シェルで実行する。
 pnpm add -D @biomejs/biome@^1.9.4
 ```
 
-- [ ] **Step 3: package.json に lint スクリプトを追加**
+- [x] **Step 3: package.json に lint スクリプトを追加**
 
 `package.json` の `scripts` セクションに `"lint": "biome ci ."` を `typecheck` の直後に追加する。最終形:
 
@@ -244,7 +244,7 @@ pnpm add -D @biomejs/biome@^1.9.4
 }
 ```
 
-- [ ] **Step 4: Devcontainer 内で lint を実行し PASS することを確認**
+- [x] **Step 4: Devcontainer 内で lint を実行し PASSすることを確認**
 
 ```bash
 pnpm lint
@@ -253,7 +253,7 @@ pnpm lint
 期待: Biome の `ci` モードで現状の `biome.json` に従い問題なく終了 (exit 0)。
 （既存ファイルで違反が発覚した場合は本 Task ではなく別途修正 PR を作成すること。本 Task の責務はスクリプト追加のみ。違反があった場合は **PR 説明欄に明記** し、後続フォロー扱いとしてレビュアに判断を仰ぐ。）
 
-- [ ] **Step 5: 型検査とテストにリグレッションがないことを確認**
+- [x] **Step 5: 型検査とテストにリグレッションがないことを確認**
 
 ```bash
 pnpm typecheck
@@ -262,7 +262,7 @@ pnpm test
 
 期待: いずれも exit 0。
 
-- [ ] **Step 6: コミット**
+- [x] **Step 6: コミット**
 
 ```bash
 git add package.json pnpm-lock.yaml
@@ -270,7 +270,7 @@ git commit -m "chore(deps): @biomejs/biome を devDependencies に追加し pnpm
 git push -u origin feature/phase1-task2_biome-lint-script
 ```
 
-- [ ] **Step 7: Phase Base に向けた Draft PR を作成**
+- [x] **Step 7: Phase Base に向けた Draft PR を作成**
 
 ```bash
 gh pr create --draft \
@@ -283,8 +283,8 @@ gh pr create --draft \
 - `package.json#scripts` に `lint: biome ci .` を追加し、Devcontainer 内 / CI で再現可能な静的解析手段を提供
 
 ## Test plan
-- [ ] Devcontainer 内で `pnpm lint` が exit 0 で終了
-- [ ] `pnpm typecheck` / `pnpm test` にリグレッションがないこと
+- [x] Devcontainer 内で `pnpm lint` が exit 0 で終了
+- [x] `pnpm typecheck` / `pnpm test` にリグレッションがないこと
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
@@ -300,7 +300,7 @@ EOF
 - Modify: `AGENTS.md`
 - Modify: `README.md`
 
-- [ ] **Step 1: Task ブランチを作成**
+- [x] **Step 1: Task ブランチを作成**
 
 ```bash
 git checkout feature/phase1_devcontainer-tooling__base
@@ -308,7 +308,7 @@ git pull --ff-only origin feature/phase1_devcontainer-tooling__base
 git checkout -b feature/phase1-task3_docs-devcontainer-required
 ```
 
-- [ ] **Step 2: AGENTS.md の `<commands>` セクションを Devcontainer 必須に書き換える**
+- [x] **Step 2: AGENTS.md の `<commands>` セクションを Devcontainer 必須に書き換える**
 
 `AGENTS.md` 17 行目（"To verify your changes..." を含む文）を以下の文に置換する。
 
@@ -322,7 +322,7 @@ To verify your changes, please use the following commands. Ideally, these should
 To verify your changes, please use the following commands. **Required:** these MUST be run inside the provided Devcontainer (`.devcontainer/`) for native module (`sqlite3`) reproducibility. Running them on the host OS is not accepted as evidence in PR reviews.
 ```
 
-- [ ] **Step 3: README.md の開発者向けセクションに Devcontainer 必須化を追記**
+- [x] **Step 3: README.md の開発者向けセクションに Devcontainer 必須化を追記**
 
 `README.md` の「開発」「Development」「Contributing」相当のセクションに以下の段落を追加（該当セクションがない場合は末尾近くに新規セクションを作成）。
 
@@ -335,7 +335,7 @@ To verify your changes, please use the following commands. **Required:** these M
 - CLI: `devcontainer up --workspace-folder .` 後、`devcontainer exec --workspace-folder . pnpm <command>`
 ```
 
-- [ ] **Step 4: Devcontainer 内で Lint と型検査を実行（リグレッション確認）**
+- [x] **Step 4: Devcontainer 内で Lint と型検査を実行（リグレッション確認）**
 
 ```bash
 pnpm lint
@@ -344,7 +344,7 @@ pnpm typecheck
 
 期待: 両方とも exit 0。
 
-- [ ] **Step 5: コミット**
+- [x] **Step 5: コミット**
 
 ```bash
 git add AGENTS.md README.md
@@ -352,7 +352,7 @@ git commit -m "docs: Devcontainer 内での pnpm 実行を必須化する旨を 
 git push -u origin feature/phase1-task3_docs-devcontainer-required
 ```
 
-- [ ] **Step 6: Phase Base に向けた Draft PR を作成**
+- [x] **Step 6: Phase Base に向けた Draft PR を作成**
 
 ```bash
 gh pr create --draft \
@@ -365,8 +365,8 @@ gh pr create --draft \
 - README.md の開発者向けセクションに Devcontainer 必須化と起動手順を追記
 
 ## Test plan
-- [ ] Devcontainer 内で `pnpm lint` / `pnpm typecheck` がいずれも exit 0
-- [ ] AGENTS.md / README.md の差分が意図通りであること（レビュー）
+- [x] Devcontainer 内で `pnpm lint` / `pnpm typecheck` がいずれも exit 0
+- [x] AGENTS.md / README.md の差分が意図通りであること（レビュー）
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
@@ -375,7 +375,7 @@ EOF
 
 ### Phase 1 完了処理
 
-- [ ] **Step P1.X: Phase Base の Draft PR を `master` に対して作成**
+- [x] **Step P1.X: Phase Base の Draft PR を `master` に対して作成**
 
 `feature/phase1_devcontainer-tooling__base` から `master` への Draft PR を作成する。Task 1.1 / 1.2 / 1.3 の差分が個別 PR としてレビュー済みであることをコメントに記載する。
 
@@ -398,7 +398,7 @@ gh pr create --draft \
 - #<TASK3_PR>
 
 ## Test plan
-- [ ] Devcontainer 内で `pnpm install --frozen-lockfile && pnpm typecheck && pnpm lint && pnpm test` が成功する
+- [x] Devcontainer 内で `pnpm install --frozen-lockfile && pnpm typecheck && pnpm lint && pnpm test` が成功する
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
@@ -417,7 +417,7 @@ Phase Base ブランチ `feature/phase2_poc-local-mode__base` を `master` か�
 
 ### Phase 2 セットアップ
 
-- [ ] **Step P2.0: Phase Base ブランチを作成**
+- [x] **Step P2.0: Phase Base ブランチを作成**
 
 ```bash
 git fetch origin
@@ -436,7 +436,7 @@ git push -u origin feature/phase2_poc-local-mode__base
 - Create (一時): `scripts/poc-agent-local-mode.ts`（**コミットしない**。最終的に削除する）
 - (No production files modified)
 
-- [ ] **Step 1: Task ブランチを作成**
+- [x] **Step 1: Task ブランチを作成**
 
 ```bash
 git checkout feature/phase2_poc-local-mode__base
@@ -444,7 +444,7 @@ git pull --ff-only origin feature/phase2_poc-local-mode__base
 git checkout -b feature/phase2-task1_poc-local-mode-gate
 ```
 
-- [ ] **Step 2: PoC スクリプトを作成**
+- [x] **Step 2: PoC スクリプトを作成**
 
 `scripts/poc-agent-local-mode.ts` を以下の内容で作成する。
 
@@ -467,7 +467,7 @@ console.log("STATUS=", result.status);
 await agent[Symbol.asyncDispose]();
 ```
 
-- [ ] **Step 3: Devcontainer 内で PoC を実行する**
+- [x] **Step 3: Devcontainer 内で PoC を実行する**
 
 Devcontainer 内シェルで実行する（`CURSOR_API_KEY` は `remoteEnv` で注入される）。本 Devcontainer は Node 20 系で固定（Phase 1 Task 1.1）のため、TypeScript 直接実行には `tsx` を `pnpm dlx` 経由で利用する。
 
@@ -478,17 +478,17 @@ echo "EXIT=$?"
 
 > `--experimental-strip-types` は Node v22.6.0 以降でのみ利用可能なため、本計画の Devcontainer（Node 20）では使用不可。`tsx` を恒久的に追加すると設計書 §4.2 の `devDependencies` 一覧と乖離するため、本 PoC では `pnpm dlx` でその場利用にとどめる（PoC スクリプトと同様、依存追加もコミットしない）。実行コマンドと出力は PR 説明欄に転記する。
 
-- [ ] **Step 4: 結果を判定し記録する**
+- [x] **Step 4: 結果を判定し記録する**
 
 | 観測 | 判定 |
 |---|---|
-| `STATUS= finished` が出力され、プロセスが exit 0 で終了 | **PoC 成功** → Phase 4 は主案 (local 明示) を採用 |
-| `Agent.create` が throw / `TypeError: Unknown option "local"` 等の型・引数エラー | **PoC 失敗** → Phase 4 はフォールバック (local 無指定) を採用 |
-| segfault / SIGSEGV / プロセスクラッシュ | **PoC 失敗** → 同上 |
+| `STATUS= finished` が出力され、プロセスが exit 0 で終了 | **[x] PoC 成功** → Phase 4 は主案 (local 明示) を採用 |
+| `Agent.create` が throw / `TypeError: Unknown option "local"` 等の型・引数エラー | **[ ] PoC 失敗** → Phase 4 はフォールバック (local 無指定) を採用 |
+| segfault / SIGSEGV / プロセスクラッシュ | **[ ] PoC 失敗** → 同上 |
 
 判定結果を `poc-output.log` のスニペットと共に Markdown でまとめ、Step 7 の PR 説明欄に貼り付ける。
 
-- [ ] **Step 5: PoC スクリプトと一時ログを削除する**
+- [x] **Step 5: PoC スクリプトと一時ログを削除する**
 
 削除前に `git status` で `poc-output.log` および `scripts/poc-agent-local-mode.ts` がステージングされていないことを確認する（誤コミット防止）。
 
@@ -497,7 +497,7 @@ git status --short   # poc-output.log / scripts/poc-agent-local-mode.ts は untr
 rm scripts/poc-agent-local-mode.ts poc-output.log
 ```
 
-- [ ] **Step 6: 差分が空であることを確認しコミット（または空のままにする）**
+- [x] **Step 6: 差分が空であることを確認しコミット（または空のままにする）**
 
 PoC は本番コードに痕跡を残さない方針のため、`git status` でステージング対象がないことを確認する。
 
@@ -507,7 +507,7 @@ git status   # → "nothing to commit, working tree clean" を期待
 
 判定エビデンスはコードではなく PR 説明欄に残す（Step 7）。
 
-- [ ] **Step 7: Phase Base に向けた Draft PR を作成（エビデンス転記用）**
+- [x] **Step 7: Phase Base に向けた Draft PR を作成（エビデンス転記用）**
 
 Phase 2 はコード差分を残さないため、PR は「エビデンスドキュメントの保管庫」として機能する。空コミットでも PR を作る:
 
@@ -533,7 +533,7 @@ gh pr create --draft \
 
 ## 判定
 
-- [ ] PoC 成功 (`STATUS= finished` 観測) → Phase 4 は **主案** を採用 (`local: { cwd: process.cwd() }` を `Agent.create` に明示)
+- [x] PoC 成功 (`STATUS= finished` 観測) → Phase 4 は **主案** を採用 (`local: { cwd: process.cwd() }` を `Agent.create` に明示)
 - [ ] PoC 失敗 → Phase 4 は **フォールバック** を採用 (`local` 無指定 / 現状維持)。`tests/integration/` 配下に SDK アップグレード時に再 PoC 実施を促す回帰検知テストを後続 Phase で追加検討
 
 ## Files
@@ -546,7 +546,7 @@ EOF
 
 ### Phase 2 完了処理
 
-- [ ] **Step P2.X: Phase Base の Draft PR を `master` に対して作成**
+- [x] **Step P2.X: Phase Base の Draft PR を `master` に対して作成**
 
 ```bash
 git checkout feature/phase2_poc-local-mode__base
@@ -574,7 +574,7 @@ Phase Base ブランチ `feature/phase3_dispose-hardening__base` を `master` �
 
 ### Phase 3 セットアップ
 
-- [ ] **Step P3.0: Phase Base ブランチを作成**
+- [x] **Step P3.0: Phase Base ブランチを作成**
 
 ```bash
 git fetch origin
@@ -592,7 +592,7 @@ git push -u origin feature/phase3_dispose-hardening__base
 **Files:**
 - Modify: `tests/agent-cleanup.test.ts`
 
-- [ ] **Step 1: Task ブランチを作成**
+- [x] **Step 1: Task ブランチを作成**
 
 ```bash
 git checkout feature/phase3_dispose-hardening__base
@@ -600,7 +600,7 @@ git pull --ff-only origin feature/phase3_dispose-hardening__base
 git checkout -b feature/phase3-task1_dispose-tests-red
 ```
 
-- [ ] **Step 2: テストケースを追記**
+- [x] **Step 2: テストケースを追記**
 
 `tests/agent-cleanup.test.ts` の `describe("disposeAgentSafely", ...)` ブロック内、既存テストの直後に以下を追加する（既存テストは残す）。
 
@@ -676,7 +676,7 @@ pnpm test tests/agent-cleanup.test.ts
 
 期待: 既存 3 ケースは PASS、追加した 3 ケース（タイムアウト 1 回呼び / catch 経路リトライ成功 / catch 経路リトライ失敗）は FAIL する。失敗内容は `expect(rawLog.warn).toHaveBeenCalledWith(...)` のメッセージ一致失敗および呼び出し回数の不一致を想定。
 
-- [ ] **Step 4: コミット**
+- [x] **Step 4: コミット**
 
 ```bash
 git add tests/agent-cleanup.test.ts
@@ -684,7 +684,7 @@ git commit -m "test(agent-cleanup): 非対称リトライ設計のテストを�
 git push -u origin feature/phase3-task1_dispose-tests-red
 ```
 
-- [ ] **Step 5: Phase Base に向けた Draft PR を作成**
+- [x] **Step 5: Phase Base に向けた Draft PR を作成**
 
 ```bash
 gh pr create --draft \
@@ -697,7 +697,7 @@ gh pr create --draft \
 - 本 PR 単独ではテストは FAIL する想定 (TDD red)。実装は Task 3.2 で対応
 
 ## Test plan
-- [ ] Devcontainer 内で `pnpm test tests/agent-cleanup.test.ts` を実行し、追加した 3 ケースが FAIL することを確認
+- [x] Devcontainer 内で `pnpm test tests/agent-cleanup.test.ts` を実行し、追加した 3 ケースが FAIL することを確認
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
@@ -712,7 +712,7 @@ EOF
 **Files:**
 - Modify: `src/agent-cleanup.ts`
 
-- [ ] **Step 1: Task ブランチを作成（直前 Task から派生）**
+- [x] **Step 1: Task ブランチを作成（直前 Task から派生）**
 
 ```bash
 git checkout feature/phase3-task1_dispose-tests-red
@@ -720,7 +720,7 @@ git pull --ff-only origin feature/phase3-task1_dispose-tests-red
 git checkout -b feature/phase3-task2_dispose-impl
 ```
 
-- [ ] **Step 2: `src/agent-cleanup.ts` を全面書き換え**
+- [x] **Step 2: `src/agent-cleanup.ts` を全面書き換え**
 
 `src/agent-cleanup.ts` を以下に置換する（設計書 §4.5 そのまま）。
 
@@ -781,7 +781,7 @@ export async function disposeAgentSafely(agent: SDKAgent, log: Logger): Promise<
 }
 ```
 
-- [ ] **Step 3: テストを実行し全件 PASS することを確認 (Green)**
+- [x] **Step 3: テストを実行し全件 PASS することを確認 (Green)**
 
 Devcontainer 内で実行する。
 
@@ -791,7 +791,7 @@ pnpm test tests/agent-cleanup.test.ts
 
 期待: 既存 3 ケース + 追加 3 ケース = 計 6 ケースすべて PASS。
 
-- [ ] **Step 4: 全体のリグレッション検査**
+- [x] **Step 4: 全体のリグレッション検査**
 
 ```bash
 pnpm typecheck
@@ -801,7 +801,7 @@ pnpm test
 
 期待: 3 コマンドすべて exit 0。
 
-- [ ] **Step 5: コミット**
+- [x] **Step 5: コミット**
 
 ```bash
 git add src/agent-cleanup.ts
@@ -809,7 +809,7 @@ git commit -m "refactor(agent-cleanup): timeout 経路はリトライ禁止 / ca
 git push -u origin feature/phase3-task2_dispose-impl
 ```
 
-- [ ] **Step 6: Phase Base に向けた Draft PR を作成**
+- [x] **Step 6: Phase Base に向けた Draft PR を作成**
 
 ```bash
 gh pr create --draft \
@@ -823,8 +823,8 @@ gh pr create --draft \
 - Task 3.1 で追加した 3 ケースを含む全 6 ケースが PASS することを確認
 
 ## Test plan
-- [ ] Devcontainer 内で `pnpm test tests/agent-cleanup.test.ts` の全 6 ケース PASS
-- [ ] Devcontainer 内で `pnpm typecheck && pnpm lint && pnpm test` がすべて exit 0
+- [x] Devcontainer 内で `pnpm test tests/agent-cleanup.test.ts` の全 6 ケース PASS
+- [x] Devcontainer 内で `pnpm typecheck && pnpm lint && pnpm test` がすべて exit 0
 
 ## 依存
 - 本 PR は Task 3.1 (`feature/phase3-task1_dispose-tests-red`) に積み上げています。Phase Base マージ時に同時取り込みを想定。
@@ -836,7 +836,7 @@ EOF
 
 ### Phase 3 完了処理
 
-- [ ] **Step P3.X: Phase Base の Draft PR を `master` に対して作成**
+- [x] **Step P3.X: Phase Base の Draft PR を `master` に対して作成**
 
 ```bash
 git checkout feature/phase3_dispose-hardening__base
@@ -851,14 +851,12 @@ gh pr create --draft \
 - Task 3.2 (#<PR>): timeout = リトライ禁止 / catch = 1 回リトライの実装
 
 ## Test plan
-- [ ] Devcontainer 内で `pnpm typecheck && pnpm lint && pnpm test` が成功する
+- [x] Devcontainer 内で `pnpm typecheck && pnpm lint && pnpm test` が成功する
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
 )"
 ```
-
-Phase 3 の `master` マージ後に Phase 4 を開始してください。
 
 ---
 
@@ -1055,7 +1053,7 @@ type AgentCreateOpts = {
 };
 ```
 
-(c) 関数本体의 `Agent.create` 呼び出し (325 行) を以下に置換:
+(c) 関数本体の `Agent.create` 呼び出し (325 行) を以下に置換:
 
 置換前:
 ```ts

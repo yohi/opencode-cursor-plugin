@@ -103,6 +103,7 @@ OpenCode のメイン LLM プロバイダーとして Cursor Headless SDK (`@cur
 
 ### 5.6 Agent 生成とネイティブ依存
 - `Agent.create` 呼び出し時、ネイティブモジュール (`sqlite3`) のワーキングディレクトリ解決を堅牢化するため、明示的に `local: { cwd: process.cwd() }` を指定します。
+- **注意:** `local` オプションは `@cursor/sdk@1.0.12` 時点で公開型定義に含まれていない undocumented API です。SDK をアップグレードする際は動作の継続性を必ず再確認してください。
 
 ## 6. Tool-call 関連イベントの扱い
 - **ToolCallStartedUpdate**: Stream に text-delta として警告メッセージを **1 回のみ** 挿入し、ログ出力します。Pure LLM モードであるため、実行は行われません。

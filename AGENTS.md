@@ -9,7 +9,7 @@ To keep context lean, detailed information is separated. Read these when relevan
 - `README.md`: User setup, installation, environment variables.
 
 ## 🛠️ Tech Stack & How to Run
-**MUST RUN INSIDE DEVCONTAINER:** All commands must be executed within `.devcontainer/` to ensure native module (`sqlite3`) compatibility.
+**MUST RUN INSIDE DEVCONTAINER:** Open the project in the Devcontainer and run commands from the repository root, not from the .devcontainer/ directory. This ensures native module (`sqlite3`) compatibility.
 
 - **Stack:** TypeScript (Node.js >= 20), pnpm, Vitest, Biome, Zod.
 - **Install:** `pnpm install --frozen-lockfile` (Never use npm/yarn)
@@ -24,3 +24,4 @@ To keep context lean, detailed information is separated. Read these when relevan
 3. **Logging:** Use the custom `Logger` wrapper. Never log sensitive values like `CURSOR_API_KEY` or full prompts/responses. Use lengths/hashes.
 4. **Verification:** Always verify changes by running `pnpm lint`, `pnpm typecheck`, and `pnpm test` before completion.
 5. **Let Tools Work:** Delegate code style to the linter (`pnpm lint`).
+6. **Provider verification:** After config changes, confirm `opencode models cursor` lists `cursor/composer-2` (or the whitelisted model set).

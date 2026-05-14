@@ -14,6 +14,7 @@ import type { Logger } from "./logger.js";
 import { STATIC_FALLBACK_MODELS, makeModelMeta, type FallbackModel } from "./models.js";
 import { createStream } from "./stream-proxy.js";
 import { translate, type ModelV2Prompt } from "./translator.js";
+import { getInMemoryPlatform } from "./platform.js";
 
 const MODELS_LIST_TIMEOUT_MS = 10_000;
 type RawSDKModel = {
@@ -313,6 +314,7 @@ export type AgentCreateOpts = {
   apiKey: string;
   model: { id: string };
   local: { cwd: string };
+  platform?: unknown;
 };
 
 /**
@@ -328,10 +330,12 @@ async function performAgentCreationAttempt(deps: {
   const { Agent, apiKey, modelId, log, attempt } = deps;
   try {
     log.debug("cursor-provider: calling Agent.create", { modelId, attempt });
+    const platform = await getInMemoryPlatform();
     const agent = (await Agent.create({
       apiKey,
       model: { id: modelId },
       local: { cwd: process.cwd() },
+      platform,
     })) as SDKAgent;
     return { agent };
   } catch (err) {
